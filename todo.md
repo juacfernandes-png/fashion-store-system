@@ -1,0 +1,47 @@
+# Fashion Store - Sistema de Gestão - TODO
+
+## Módulo de Produtos e Estoque
+- [x] Cadastro completo de produtos (código, descrição, fornecedor, fotos, categorias, tamanhos, cores, preços)
+- [x] Upload e armazenamento de múltiplas fotos de produtos com galeria
+- [x] Controle automático de movimentação de estoque (entradas/saídas com data, lote, quantidade)
+- [x] Configuração de estoque de segurança (níveis mínimos e máximos)
+- [x] Alertas automáticos para níveis críticos de estoque
+
+## Módulo de Pedidos
+- [x] Gestão de pedidos de compra para fornecedores com status
+- [x] Gestão de pedidos de venda para clientes com status
+
+## Módulo de CRM
+- [x] Cadastro de clientes completo
+- [x] Histórico de compras por cliente
+- [x] Preferências e segmentação de clientes
+
+## Módulo Financeiro
+- [x] Controle de contas a pagar
+- [x] Controle de contas a receber
+- [x] Fluxo de caixa
+- [x] Conciliação bancária
+
+## Relatórios e Análises
+- [x] Relatório de inventário atual
+- [x] Relatório de movimentações de estoque
+- [x] Relatório de produtos em falta
+- [x] Relatório de produtos com excesso
+- [x] Relatório de vendas e performance
+- [x] Análise de produtos mais vendidos
+- [x] Análise de ticket médio
+- [x] Análise de curva ABC (classificação por importância/rentabilidade)
+- [x] Previsão de demanda
+
+## Dashboard
+- [x] Indicadores de vendas do período
+- [x] Indicador de giro de estoque
+- [x] Indicador de margem de lucro
+- [x] Previsão de demanda visual
+
+## Notificações
+- [x] Notificações automáticas por email para níveis críticos de estoque
+
+## Interface e Design
+- [x] Design elegante e sofisticado para segmento de moda
+- [x] Layout responsivo e profissional
