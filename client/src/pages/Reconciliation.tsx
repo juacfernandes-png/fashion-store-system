@@ -15,8 +15,8 @@ import DashboardLayout from "@/components/DashboardLayout";
 
 export default function Reconciliation() {
   const [activeTab, setActiveTab] = useState("sales");
-  const [filterUnit, setFilterUnit] = useState<string>("");
-  const [filterStatus, setFilterStatus] = useState<string>("");
+  const [filterUnit, setFilterUnit] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   
   const utils = trpc.useUtils();
@@ -233,7 +233,7 @@ export default function Reconciliation() {
                         <SelectValue placeholder="Todos" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Todos</SelectItem>
+                        <SelectItem value="all">Todos</SelectItem>
                         <SelectItem value="RECEIVED">Recebido</SelectItem>
                         <SelectItem value="PENDING">Pendente</SelectItem>
                         <SelectItem value="CHARGEBACK">Chargeback</SelectItem>
@@ -247,7 +247,7 @@ export default function Reconciliation() {
                         <SelectValue placeholder="Todas" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Todas</SelectItem>
+                        <SelectItem value="all">Todas</SelectItem>
                         {units?.map((u: { id: number; name: string }) => (
                           <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
                         ))}

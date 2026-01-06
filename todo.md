@@ -91,3 +91,6 @@
 - [x] Fazer a sidebar ficar fixa na tela
 - [x] Corrigir erro Select.Item na página DRE
 - [x] Corrigir erro Select.Item na página Fluxo de Caixa
+- [x] Corrigir erro Select.Item na página Contas a Pagar
+- [x] Corrigir erro Select.Item na página Contas a Receber
+- [x] Corrigir erro Select.Item na página Conciliação

@@ -69,9 +69,9 @@ export default function Payables() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isPayDialogOpen, setIsPayDialogOpen] = useState(false);
   const [selectedPayable, setSelectedPayable] = useState<PayableType | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>("");
-  const [filterApproval, setFilterApproval] = useState<string>("");
-  const [filterCategory, setFilterCategory] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterApproval, setFilterApproval] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
   
   const [formData, setFormData] = useState({
     documentNumber: "",
@@ -99,9 +99,9 @@ export default function Payables() {
   const utils = trpc.useUtils();
   
   const { data: payables, isLoading } = trpc.payables.list.useQuery({
-    status: filterStatus || undefined,
-    approvalStatus: filterApproval || undefined,
-    category: filterCategory || undefined,
+    status: filterStatus && filterStatus !== "all" ? filterStatus : undefined,
+    approvalStatus: filterApproval && filterApproval !== "all" ? filterApproval : undefined,
+    category: filterCategory && filterCategory !== "all" ? filterCategory : undefined,
     limit: 500,
   });
   
@@ -362,7 +362,7 @@ export default function Payables() {
                         <SelectValue placeholder="Selecione..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Nenhum</SelectItem>
+                        <SelectItem value="none">Nenhum</SelectItem>
                         {suppliers?.map((s: { id: number; name: string }) => (
                           <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
                         ))}
@@ -376,7 +376,7 @@ export default function Payables() {
                         <SelectValue placeholder="Todas" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Todas</SelectItem>
+                        <SelectItem value="all">Todas</SelectItem>
                         {units?.map((u: { id: number; name: string }) => (
                           <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
                         ))}
@@ -393,7 +393,7 @@ export default function Payables() {
                         <SelectValue placeholder="Nenhum" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Nenhum</SelectItem>
+                        <SelectItem value="none">Nenhum</SelectItem>
                         {costCenters?.map((cc: { id: number; name: string }) => (
                           <SelectItem key={cc.id} value={cc.id.toString()}>{cc.name}</SelectItem>
                         ))}
@@ -535,7 +535,7 @@ export default function Payables() {
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="PENDING">Pendente</SelectItem>
                     <SelectItem value="PARTIAL">Parcial</SelectItem>
                     <SelectItem value="PAID">Pago</SelectItem>
@@ -552,7 +552,7 @@ export default function Payables() {
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="PENDING">Aguardando</SelectItem>
                     <SelectItem value="APPROVED">Aprovado</SelectItem>
                     <SelectItem value="REJECTED">Rejeitado</SelectItem>
@@ -567,7 +567,7 @@ export default function Payables() {
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas</SelectItem>
+                    <SelectItem value="all">Todas</SelectItem>
                     {categories.map((cat) => (
                       <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
                     ))}

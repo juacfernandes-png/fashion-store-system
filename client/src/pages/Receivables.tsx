@@ -34,9 +34,9 @@ export default function Receivables() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isReceiveDialogOpen, setIsReceiveDialogOpen] = useState(false);
   const [selectedReceivable, setSelectedReceivable] = useState<any>(null);
-  const [filterStatus, setFilterStatus] = useState<string>("");
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("");
-  const [filterReconciled, setFilterReconciled] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("all");
+  const [filterReconciled, setFilterReconciled] = useState<string>("all");
   
   const [formData, setFormData] = useState({
     documentNumber: "",
@@ -63,8 +63,8 @@ export default function Receivables() {
   const utils = trpc.useUtils();
   
   const { data: receivables, isLoading } = trpc.receivables.list.useQuery({
-    status: filterStatus || undefined,
-    paymentMethod: filterPaymentMethod || undefined,
+    status: filterStatus && filterStatus !== "all" ? filterStatus : undefined,
+    paymentMethod: filterPaymentMethod && filterPaymentMethod !== "all" ? filterPaymentMethod : undefined,
     isReconciled: filterReconciled === "true" ? true : filterReconciled === "false" ? false : undefined,
     limit: 500,
   });
@@ -268,7 +268,7 @@ export default function Receivables() {
                         <SelectValue placeholder="Selecione..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Nenhum</SelectItem>
+                        <SelectItem value="none">Nenhum</SelectItem>
                         {customers?.map((c: { id: number; name: string }) => (
                           <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
                         ))}
@@ -328,7 +328,7 @@ export default function Receivables() {
                         <SelectValue placeholder="Todas" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Todas</SelectItem>
+                        <SelectItem value="all">Todas</SelectItem>
                         {units?.map((u: { id: number; name: string }) => (
                           <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
                         ))}
@@ -479,7 +479,7 @@ export default function Receivables() {
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="PENDING">Pendente</SelectItem>
                     <SelectItem value="PARTIAL">Parcial</SelectItem>
                     <SelectItem value="RECEIVED">Recebido</SelectItem>
@@ -497,7 +497,7 @@ export default function Receivables() {
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas</SelectItem>
+                    <SelectItem value="all">Todas</SelectItem>
                     {paymentMethods.map((pm) => (
                       <SelectItem key={pm.value} value={pm.value}>{pm.label}</SelectItem>
                     ))}
@@ -512,7 +512,7 @@ export default function Receivables() {
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="true">Conciliado</SelectItem>
                     <SelectItem value="false">Não Conciliado</SelectItem>
                   </SelectContent>
