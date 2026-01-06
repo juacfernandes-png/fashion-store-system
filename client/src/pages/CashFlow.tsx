@@ -43,9 +43,9 @@ const paymentMethods = [
 
 export default function CashFlow() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [filterType, setFilterType] = useState<string>("");
-  const [filterCategory, setFilterCategory] = useState<string>("");
-  const [filterUnitId, setFilterUnitId] = useState<string>("");
+  const [filterType, setFilterType] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterUnitId, setFilterUnitId] = useState<string>("all");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   
@@ -56,8 +56,8 @@ export default function CashFlow() {
     description: "",
     amount: "",
     transactionDate: new Date().toISOString().split("T")[0],
-    unitId: "",
-    costCenterId: "",
+    unitId: "all",
+    costCenterId: "none",
     paymentMethod: "",
     bankAccount: "",
     isProjected: false,
@@ -67,16 +67,16 @@ export default function CashFlow() {
   const utils = trpc.useUtils();
   
   const { data: cashFlowEntries, isLoading } = trpc.cashFlow.list.useQuery({
-    type: filterType || undefined,
-    category: filterCategory || undefined,
-    unitId: filterUnitId ? parseInt(filterUnitId) : undefined,
+    type: filterType && filterType !== "all" ? filterType : undefined,
+    category: filterCategory && filterCategory !== "all" ? filterCategory : undefined,
+    unitId: filterUnitId && filterUnitId !== "all" ? parseInt(filterUnitId) : undefined,
     startDate: startDate ? new Date(startDate) : undefined,
     endDate: endDate ? new Date(endDate) : undefined,
     limit: 500,
   });
   
   const { data: summary } = trpc.cashFlow.summary.useQuery({
-    unitId: filterUnitId ? parseInt(filterUnitId) : undefined,
+    unitId: filterUnitId && filterUnitId !== "all" ? parseInt(filterUnitId) : undefined,
     startDate: startDate ? new Date(startDate) : undefined,
     endDate: endDate ? new Date(endDate) : undefined,
   });
@@ -115,8 +115,8 @@ export default function CashFlow() {
       description: "",
       amount: "",
       transactionDate: new Date().toISOString().split("T")[0],
-      unitId: "",
-      costCenterId: "",
+      unitId: "all",
+      costCenterId: "none",
       paymentMethod: "",
       bankAccount: "",
       isProjected: false,
@@ -137,8 +137,8 @@ export default function CashFlow() {
       description: formData.description,
       amount: formData.amount,
       transactionDate: new Date(formData.transactionDate),
-      unitId: formData.unitId ? parseInt(formData.unitId) : undefined,
-      costCenterId: formData.costCenterId ? parseInt(formData.costCenterId) : undefined,
+      unitId: formData.unitId && formData.unitId !== "all" ? parseInt(formData.unitId) : undefined,
+      costCenterId: formData.costCenterId && formData.costCenterId !== "none" ? parseInt(formData.costCenterId) : undefined,
       paymentMethod: formData.paymentMethod as any || undefined,
       bankAccount: formData.bankAccount || undefined,
       isProjected: formData.isProjected,
@@ -247,7 +247,7 @@ export default function CashFlow() {
                         <SelectValue placeholder="Todas" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Todas</SelectItem>
+                        <SelectItem value="all">Todas</SelectItem>
                         {units?.map((unit: { id: number; name: string }) => (
                           <SelectItem key={unit.id} value={unit.id.toString()}>{unit.name}</SelectItem>
                         ))}
@@ -261,7 +261,7 @@ export default function CashFlow() {
                         <SelectValue placeholder="Nenhum" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Nenhum</SelectItem>
+                        <SelectItem value="none">Nenhum</SelectItem>
                         {costCenters?.map((cc) => (
                           <SelectItem key={cc.id} value={cc.id.toString()}>{cc.name}</SelectItem>
                         ))}
@@ -390,7 +390,7 @@ export default function CashFlow() {
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todos</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="INCOME">Entradas</SelectItem>
                     <SelectItem value="EXPENSE">Saídas</SelectItem>
                   </SelectContent>
@@ -404,7 +404,7 @@ export default function CashFlow() {
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas</SelectItem>
+                    <SelectItem value="all">Todas</SelectItem>
                     {[...incomeCategories, ...expenseCategories].map((cat) => (
                       <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
                     ))}
@@ -419,7 +419,7 @@ export default function CashFlow() {
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas</SelectItem>
+                    <SelectItem value="all">Todas</SelectItem>
                     {units?.map((unit) => (
                       <SelectItem key={unit.id} value={unit.id.toString()}>{unit.name}</SelectItem>
                     ))}

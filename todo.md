@@ -89,3 +89,5 @@
 ## Bugs Reportados
 - [x] Corrigir erro no Log de Auditoria (Select.Item com valor vazio)
 - [x] Fazer a sidebar ficar fixa na tela
+- [x] Corrigir erro Select.Item na página DRE
+- [x] Corrigir erro Select.Item na página Fluxo de Caixa

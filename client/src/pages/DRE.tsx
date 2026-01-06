@@ -12,7 +12,7 @@ export default function DRE() {
   const currentDate = new Date();
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
-  const [selectedUnit, setSelectedUnit] = useState<string>("");
+  const [selectedUnit, setSelectedUnit] = useState<string>("all");
   
   const period = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`;
   
@@ -26,7 +26,7 @@ export default function DRE() {
   const calculateDRE = () => {
     dreMutation.mutate({
       period,
-      unitId: selectedUnit ? parseInt(selectedUnit) : undefined,
+      unitId: selectedUnit && selectedUnit !== "all" ? parseInt(selectedUnit) : undefined,
     });
   };
   
@@ -143,7 +143,7 @@ export default function DRE() {
                     <SelectValue placeholder="Consolidado (Todas)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Consolidado (Todas)</SelectItem>
+                    <SelectItem value="all">Consolidado (Todas)</SelectItem>
                     {units?.map((u: { id: number; name: string }) => (
                       <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
                     ))}
