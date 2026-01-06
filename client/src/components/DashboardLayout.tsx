@@ -36,7 +36,9 @@ import {
   Settings,
   Tag,
   Building2,
-  Boxes
+  Boxes,
+  Sun,
+  Moon
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -44,6 +46,7 @@ import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { trpc } from "@/lib/trpc";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -147,6 +150,9 @@ function DashboardLayoutContent({
   // Fetch alerts count
   const { data: alerts } = trpc.stock.alerts.useQuery({ unreadOnly: true });
   const alertsCount = alerts?.length ?? 0;
+  
+  // Theme toggle
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     if (isCollapsed) {
@@ -286,6 +292,18 @@ function DashboardLayoutContent({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            >
+              {theme === 'dark' ? (
+                <Sun className="h-5 w-5" />
+              ) : (
+                <Moon className="h-5 w-5" />
+              )}
+            </Button>
             <Button
               variant="ghost"
               size="icon"

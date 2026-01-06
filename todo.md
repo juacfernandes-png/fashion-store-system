@@ -45,3 +45,6 @@
 ## Interface e Design
 - [x] Design elegante e sofisticado para segmento de moda
 - [x] Layout responsivo e profissional
+
+## Melhorias de Interface
+- [x] Implementar alternância entre tema claro e escuro
