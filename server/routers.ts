@@ -859,6 +859,346 @@ export const appRouter = router({
     stats: protectedProcedure.query(async () => {
       return db.getDashboardStats();
     }),
+    
+    multiUnit: protectedProcedure
+      .input(z.object({ unitId: z.number().optional() }).optional())
+      .query(async ({ input }) => {
+        return db.getMultiUnitDashboardStats(input?.unitId);
+      }),
+  }),
+
+  // ==================== STORE UNITS ====================
+  storeUnits: router({
+    list: protectedProcedure
+      .input(z.object({ activeOnly: z.boolean().default(true) }).optional())
+      .query(async ({ input }) => {
+        return db.listStoreUnits(input?.activeOnly ?? true);
+      }),
+    
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getStoreUnitById(input.id);
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        code: z.string().min(1),
+        name: z.string().min(1),
+        type: z.enum(["STORE", "WAREHOUSE", "ECOMMERCE"]),
+        address: z.string().optional(),
+        city: z.string().optional(),
+        state: z.string().optional(),
+        zipCode: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().email().optional(),
+        manager: z.string().optional(),
+        isDefault: z.boolean().default(false),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createStoreUnit(input);
+      }),
+    
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        data: z.object({
+          name: z.string().optional(),
+          type: z.enum(["STORE", "WAREHOUSE", "ECOMMERCE"]).optional(),
+          address: z.string().optional(),
+          city: z.string().optional(),
+          state: z.string().optional(),
+          zipCode: z.string().optional(),
+          phone: z.string().optional(),
+          email: z.string().email().optional(),
+          manager: z.string().optional(),
+          isActive: z.boolean().optional(),
+          isDefault: z.boolean().optional(),
+        }),
+      }))
+      .mutation(async ({ input }) => {
+        return db.updateStoreUnit(input.id, input.data);
+      }),
+    
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteStoreUnit(input.id);
+        return { success: true };
+      }),
+  }),
+
+  // ==================== UNIT STOCK ====================
+  unitStock: router({
+    byUnit: protectedProcedure
+      .input(z.object({ unitId: z.number() }))
+      .query(async ({ input }) => {
+        const stocks = await db.listUnitStockByUnit(input.unitId);
+        // Enrich with product info
+        const enrichedStocks = await Promise.all(stocks.map(async (stock) => {
+          const product = await db.getProductById(stock.productId);
+          const variant = stock.variantId ? await db.getProductVariantById(stock.variantId) : null;
+          return { ...stock, product, variant };
+        }));
+        return enrichedStocks;
+      }),
+    
+    byProduct: protectedProcedure
+      .input(z.object({ productId: z.number(), variantId: z.number().optional() }))
+      .query(async ({ input }) => {
+        return db.getConsolidatedStock(input.productId, input.variantId);
+      }),
+    
+    update: adminProcedure
+      .input(z.object({
+        unitId: z.number(),
+        productId: z.number(),
+        variantId: z.number().optional(),
+        quantity: z.number(),
+        minStock: z.number().default(0),
+        maxStock: z.number().default(1000),
+      }))
+      .mutation(async ({ input }) => {
+        return db.upsertUnitStock(input);
+      }),
+  }),
+
+  // ==================== UNIT STOCK MOVEMENTS ====================
+  unitMovements: router({
+    list: protectedProcedure
+      .input(z.object({
+        unitId: z.number().optional(),
+        productId: z.number().optional(),
+        variantId: z.number().optional(),
+        startDate: z.date().optional(),
+        endDate: z.date().optional(),
+        limit: z.number().default(100),
+      }).optional())
+      .query(async ({ input }) => {
+        const movements = await db.listUnitStockMovements(input ?? {});
+        // Enrich with product and unit info
+        const enriched = await Promise.all(movements.map(async (mov) => {
+          const product = await db.getProductById(mov.productId);
+          const unit = await db.getStoreUnitById(mov.unitId);
+          const variant = mov.variantId ? await db.getProductVariantById(mov.variantId) : null;
+          return { ...mov, product, unit, variant };
+        }));
+        return enriched;
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        unitId: z.number(),
+        productId: z.number(),
+        variantId: z.number().optional(),
+        type: z.enum(["IN", "OUT", "ADJUSTMENT"]),
+        reason: z.enum(["PURCHASE", "SALE", "RETURN", "EXCHANGE", "LOSS", "ADJUSTMENT", "TRANSFER_IN", "TRANSFER_OUT", "INVENTORY"]),
+        quantity: z.number(),
+        unitCost: z.string().optional(),
+        batch: z.string().optional(),
+        barcode: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return db.createUnitStockMovement({
+          ...input,
+          previousStock: 0,
+          newStock: 0,
+          userId: ctx.user.id,
+        });
+      }),
+  }),
+
+  // ==================== STOCK TRANSFERS ====================
+  transfers: router({
+    list: protectedProcedure
+      .input(z.object({
+        fromUnitId: z.number().optional(),
+        toUnitId: z.number().optional(),
+        status: z.string().optional(),
+        startDate: z.date().optional(),
+        endDate: z.date().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const transfers = await db.listStockTransfers(input ?? {});
+        // Enrich with unit info
+        const enriched = await Promise.all(transfers.map(async (transfer) => {
+          const fromUnit = await db.getStoreUnitById(transfer.fromUnitId);
+          const toUnit = await db.getStoreUnitById(transfer.toUnitId);
+          return { ...transfer, fromUnit, toUnit };
+        }));
+        return enriched;
+      }),
+    
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getStockTransferWithItems(input.id);
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        fromUnitId: z.number(),
+        toUnitId: z.number(),
+        notes: z.string().optional(),
+        items: z.array(z.object({
+          productId: z.number(),
+          variantId: z.number().optional(),
+          requestedQuantity: z.number(),
+          notes: z.string().optional(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { items, ...transferData } = input;
+        return db.createStockTransfer(
+          { ...transferData, requestedBy: ctx.user.id },
+          items
+        );
+      }),
+    
+    approve: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.approveStockTransfer(input.id, ctx.user.id);
+        return { success: true };
+      }),
+    
+    ship: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.shipStockTransfer(input.id);
+        return { success: true };
+      }),
+    
+    receive: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        items: z.array(z.object({
+          itemId: z.number(),
+          receivedQuantity: z.number(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.receiveStockTransfer(input.id, ctx.user.id, input.items);
+        return { success: true };
+      }),
+    
+    cancel: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.updateStockTransfer(input.id, { status: "CANCELLED" });
+        return { success: true };
+      }),
+  }),
+
+  // ==================== RETURNS ====================
+  returns: router({
+    list: protectedProcedure
+      .input(z.object({
+        customerId: z.number().optional(),
+        unitId: z.number().optional(),
+        type: z.string().optional(),
+        status: z.string().optional(),
+        startDate: z.date().optional(),
+        endDate: z.date().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const returns = await db.listReturns(input ?? {});
+        // Enrich with customer and unit info
+        const enriched = await Promise.all(returns.map(async (ret) => {
+          const customer = ret.customerId ? await db.getCustomerById(ret.customerId) : null;
+          const unit = ret.unitId ? await db.getStoreUnitById(ret.unitId) : null;
+          return { ...ret, customer, unit };
+        }));
+        return enriched;
+      }),
+    
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getReturnWithItems(input.id);
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        salesOrderId: z.number().optional(),
+        customerId: z.number().optional(),
+        unitId: z.number().optional(),
+        type: z.enum(["RETURN", "EXCHANGE"]),
+        reason: z.enum(["DEFECT", "WRONG_SIZE", "WRONG_COLOR", "REGRET", "DAMAGED", "OTHER"]),
+        reasonDetails: z.string().optional(),
+        refundAmount: z.string().optional(),
+        refundMethod: z.enum(["CASH", "CREDIT", "STORE_CREDIT", "EXCHANGE"]).optional(),
+        notes: z.string().optional(),
+        items: z.array(z.object({
+          productId: z.number(),
+          variantId: z.number().optional(),
+          quantity: z.number(),
+          unitPrice: z.string(),
+          condition: z.enum(["NEW", "USED", "DAMAGED", "DEFECTIVE"]).default("USED"),
+          notes: z.string().optional(),
+        })),
+      }))
+      .mutation(async ({ input }) => {
+        const { items, ...returnData } = input;
+        return db.createReturn(returnData, items);
+      }),
+    
+    approve: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.updateReturn(input.id, { status: "APPROVED" });
+        return { success: true };
+      }),
+    
+    reject: adminProcedure
+      .input(z.object({ id: z.number(), reason: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        await db.updateReturn(input.id, { status: "REJECTED", reasonDetails: input.reason });
+        return { success: true };
+      }),
+    
+    process: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        returnToStock: z.boolean().default(true),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.processReturn(input.id, ctx.user.id, input.returnToStock);
+        return { success: true };
+      }),
+  }),
+
+  // ==================== BARCODE ====================
+  barcode: router({
+    lookup: protectedProcedure
+      .input(z.object({ barcode: z.string() }))
+      .query(async ({ input }) => {
+        return db.findProductByBarcode(input.barcode);
+      }),
+  }),
+
+  // ==================== STOCK TURNOVER ====================
+  stockTurnover: router({
+    calculate: protectedProcedure
+      .input(z.object({
+        productId: z.number(),
+        unitId: z.number().optional(),
+        period: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        return db.calculateStockTurnover(input.productId, input.unitId, input.period);
+      }),
+    
+    report: protectedProcedure
+      .input(z.object({
+        unitId: z.number().optional(),
+        startPeriod: z.string().optional(),
+        endPeriod: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getStockTurnoverReport(input?.unitId, input?.startPeriod, input?.endPeriod);
+      }),
   }),
 
   // ==================== UTILITIES ====================

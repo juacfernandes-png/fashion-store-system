@@ -14,6 +14,10 @@ import Sales from "./pages/Sales";
 import Purchases from "./pages/Purchases";
 import Financial from "./pages/Financial";
 import Reports from "./pages/Reports";
+import Units from "./pages/Units";
+import Transfers from "./pages/Transfers";
+import Returns from "./pages/Returns";
+import UnitStock from "./pages/UnitStock";
 
 function Router() {
   return (
@@ -28,6 +32,10 @@ function Router() {
       <Route path={"/purchases"} component={Purchases} />
       <Route path={"/financial"} component={Financial} />
       <Route path={"/reports"} component={Reports} />
+      <Route path={"/units"} component={Units} />
+      <Route path={"/transfers"} component={Transfers} />
+      <Route path={"/returns"} component={Returns} />
+      <Route path={"/unit-stock"} component={UnitStock} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

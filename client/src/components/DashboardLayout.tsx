@@ -38,7 +38,11 @@ import {
   Building2,
   Boxes,
   Sun,
-  Moon
+  Moon,
+  Store,
+  ArrowLeftRight,
+  RotateCcw,
+  Warehouse
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -54,6 +58,10 @@ const menuItems = [
   { icon: Tag, label: "Categorias", path: "/categories" },
   { icon: Building2, label: "Fornecedores", path: "/suppliers" },
   { icon: Boxes, label: "Estoque", path: "/stock" },
+  { icon: Store, label: "Unidades", path: "/units" },
+  { icon: Warehouse, label: "Estoque por Unidade", path: "/unit-stock" },
+  { icon: ArrowLeftRight, label: "Transferências", path: "/transfers" },
+  { icon: RotateCcw, label: "Trocas/Devoluções", path: "/returns" },
   { icon: Users, label: "Clientes", path: "/customers" },
   { icon: ShoppingCart, label: "Vendas", path: "/sales" },
   { icon: Truck, label: "Compras", path: "/purchases" },

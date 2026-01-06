@@ -16,7 +16,15 @@ import {
   accountsPayable, InsertAccountPayable, AccountPayable,
   accountsReceivable, InsertAccountReceivable, AccountReceivable,
   financialTransactions, InsertFinancialTransaction, FinancialTransaction,
-  stockAlerts, InsertStockAlert, StockAlert
+  stockAlerts, InsertStockAlert, StockAlert,
+  storeUnits, InsertStoreUnit, StoreUnit,
+  unitStock, InsertUnitStock, UnitStock,
+  stockTransfers, InsertStockTransfer, StockTransfer,
+  stockTransferItems, InsertStockTransferItem, StockTransferItem,
+  returns, InsertReturn, Return,
+  returnItems, InsertReturnItem, ReturnItem,
+  unitStockMovements, InsertUnitStockMovement, UnitStockMovement,
+  stockTurnover, InsertStockTurnover, StockTurnover
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1158,4 +1166,638 @@ export async function generateCode(prefix: string) {
   
   const timestamp = Date.now().toString(36).toUpperCase();
   return `${prefix}${timestamp}`;
+}
+
+
+// ==================== STORE UNIT FUNCTIONS ====================
+export async function createStoreUnit(data: InsertStoreUnit) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(storeUnits).values(data);
+  return { id: result[0].insertId };
+}
+
+export async function updateStoreUnit(id: number, data: Partial<InsertStoreUnit>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(storeUnits).set(data).where(eq(storeUnits.id, id));
+}
+
+export async function getStoreUnitById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(storeUnits).where(eq(storeUnits.id, id)).limit(1);
+  return result[0];
+}
+
+export async function listStoreUnits(activeOnly = true) {
+  const db = await getDb();
+  if (!db) return [];
+  if (activeOnly) {
+    return db.select().from(storeUnits).where(eq(storeUnits.isActive, true)).orderBy(asc(storeUnits.name));
+  }
+  return db.select().from(storeUnits).orderBy(asc(storeUnits.name));
+}
+
+export async function deleteStoreUnit(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(storeUnits).set({ isActive: false }).where(eq(storeUnits.id, id));
+}
+
+// ==================== UNIT STOCK FUNCTIONS ====================
+export async function getUnitStock(unitId: number, productId: number, variantId?: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const conditions = [eq(unitStock.unitId, unitId), eq(unitStock.productId, productId)];
+  if (variantId) {
+    conditions.push(eq(unitStock.variantId, variantId));
+  }
+  
+  const result = await db.select().from(unitStock).where(and(...conditions)).limit(1);
+  return result[0];
+}
+
+export async function upsertUnitStock(data: InsertUnitStock) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const existing = await getUnitStock(data.unitId, data.productId, data.variantId ?? undefined);
+  
+  if (existing) {
+    await db.update(unitStock).set({
+      quantity: data.quantity,
+      minStock: data.minStock,
+      maxStock: data.maxStock,
+      reservedQuantity: data.reservedQuantity,
+      availableQuantity: (data.quantity ?? 0) - (data.reservedQuantity ?? 0),
+      lastMovementAt: new Date()
+    }).where(eq(unitStock.id, existing.id));
+    return { id: existing.id };
+  } else {
+    const result = await db.insert(unitStock).values({
+      ...data,
+      availableQuantity: (data.quantity ?? 0) - (data.reservedQuantity ?? 0)
+    });
+    return { id: result[0].insertId };
+  }
+}
+
+export async function listUnitStockByUnit(unitId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(unitStock).where(eq(unitStock.unitId, unitId));
+}
+
+export async function listUnitStockByProduct(productId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(unitStock).where(eq(unitStock.productId, productId));
+}
+
+export async function getConsolidatedStock(productId: number, variantId?: number) {
+  const db = await getDb();
+  if (!db) return { total: 0, byUnit: [] };
+  
+  const conditions = [eq(unitStock.productId, productId)];
+  if (variantId) {
+    conditions.push(eq(unitStock.variantId, variantId));
+  }
+  
+  const stocks = await db.select().from(unitStock).where(and(...conditions));
+  const units = await listStoreUnits();
+  
+  const byUnit = stocks.map(s => {
+    const unit = units.find(u => u.id === s.unitId);
+    return {
+      ...s,
+      unitName: unit?.name || 'Desconhecido',
+      unitType: unit?.type || 'STORE'
+    };
+  });
+  
+  const total = stocks.reduce((sum, s) => sum + s.quantity, 0);
+  
+  return { total, byUnit };
+}
+
+// ==================== UNIT STOCK MOVEMENT FUNCTIONS ====================
+export async function createUnitStockMovement(data: InsertUnitStockMovement) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Get current stock
+  let currentStock = await getUnitStock(data.unitId, data.productId, data.variantId ?? undefined);
+  const previousStock = currentStock?.quantity ?? 0;
+  
+  let newQuantity = previousStock;
+  if (data.type === "IN") {
+    newQuantity = previousStock + data.quantity;
+  } else if (data.type === "OUT") {
+    newQuantity = previousStock - data.quantity;
+  } else {
+    newQuantity = data.newStock;
+  }
+  
+  // Update unit stock
+  await upsertUnitStock({
+    unitId: data.unitId,
+    productId: data.productId,
+    variantId: data.variantId,
+    quantity: newQuantity,
+    minStock: currentStock?.minStock ?? 0,
+    maxStock: currentStock?.maxStock ?? 1000,
+    reservedQuantity: currentStock?.reservedQuantity ?? 0
+  });
+  
+  // Create movement record
+  const result = await db.insert(unitStockMovements).values({
+    ...data,
+    previousStock,
+    newStock: newQuantity
+  });
+  
+  return { id: result[0].insertId, previousStock, newStock: newQuantity };
+}
+
+export async function listUnitStockMovements(filters: {
+  unitId?: number;
+  productId?: number;
+  variantId?: number;
+  type?: string;
+  reason?: string;
+  startDate?: Date;
+  endDate?: Date;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions = [];
+  if (filters.unitId) conditions.push(eq(unitStockMovements.unitId, filters.unitId));
+  if (filters.productId) conditions.push(eq(unitStockMovements.productId, filters.productId));
+  if (filters.variantId) conditions.push(eq(unitStockMovements.variantId, filters.variantId));
+  if (filters.startDate) conditions.push(gte(unitStockMovements.createdAt, filters.startDate));
+  if (filters.endDate) conditions.push(lte(unitStockMovements.createdAt, filters.endDate));
+  
+  let query = db.select().from(unitStockMovements);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as typeof query;
+  }
+  
+  return query.orderBy(desc(unitStockMovements.createdAt)).limit(filters.limit ?? 100);
+}
+
+// ==================== STOCK TRANSFER FUNCTIONS ====================
+export async function createStockTransfer(data: Omit<InsertStockTransfer, 'transferNumber'>, items: Omit<InsertStockTransferItem, 'transferId'>[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const transferNumber = await generateOrderNumber("TRF");
+  
+  const result = await db.insert(stockTransfers).values({
+    ...data,
+    transferNumber
+  });
+  
+  const transferId = result[0].insertId;
+  
+  // Insert items
+  for (const item of items) {
+    await db.insert(stockTransferItems).values({
+      ...item,
+      transferId
+    });
+  }
+  
+  return { id: transferId, transferNumber };
+}
+
+export async function updateStockTransfer(id: number, data: Partial<InsertStockTransfer>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(stockTransfers).set(data).where(eq(stockTransfers.id, id));
+}
+
+export async function getStockTransferById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(stockTransfers).where(eq(stockTransfers.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getStockTransferWithItems(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const transfer = await getStockTransferById(id);
+  if (!transfer) return undefined;
+  
+  const items = await db.select().from(stockTransferItems).where(eq(stockTransferItems.transferId, id));
+  const fromUnit = await getStoreUnitById(transfer.fromUnitId);
+  const toUnit = await getStoreUnitById(transfer.toUnitId);
+  
+  // Get product details for items
+  const productIds = items.map(i => i.productId);
+  const productDetails = productIds.length > 0 
+    ? await db.select().from(products).where(inArray(products.id, productIds))
+    : [];
+  
+  const itemsWithProducts = items.map(item => ({
+    ...item,
+    product: productDetails.find(p => p.id === item.productId)
+  }));
+  
+  return {
+    ...transfer,
+    fromUnit,
+    toUnit,
+    items: itemsWithProducts
+  };
+}
+
+export async function listStockTransfers(filters: {
+  fromUnitId?: number;
+  toUnitId?: number;
+  status?: string;
+  startDate?: Date;
+  endDate?: Date;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions = [];
+  if (filters.fromUnitId) conditions.push(eq(stockTransfers.fromUnitId, filters.fromUnitId));
+  if (filters.toUnitId) conditions.push(eq(stockTransfers.toUnitId, filters.toUnitId));
+  if (filters.startDate) conditions.push(gte(stockTransfers.requestedAt, filters.startDate));
+  if (filters.endDate) conditions.push(lte(stockTransfers.requestedAt, filters.endDate));
+  
+  let query = db.select().from(stockTransfers);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as typeof query;
+  }
+  
+  return query.orderBy(desc(stockTransfers.requestedAt));
+}
+
+export async function approveStockTransfer(id: number, approvedBy: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(stockTransfers).set({
+    status: "APPROVED",
+    approvedAt: new Date(),
+    approvedBy
+  }).where(eq(stockTransfers.id, id));
+}
+
+export async function shipStockTransfer(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const transfer = await getStockTransferWithItems(id);
+  if (!transfer) throw new Error("Transfer not found");
+  
+  // Deduct stock from source unit
+  for (const item of transfer.items) {
+    await createUnitStockMovement({
+      unitId: transfer.fromUnitId,
+      productId: item.productId,
+      variantId: item.variantId,
+      type: "OUT",
+      reason: "TRANSFER_OUT",
+      quantity: item.requestedQuantity,
+      previousStock: 0,
+      newStock: 0,
+      referenceId: id,
+      referenceType: "TRANSFER"
+    });
+    
+    // Update shipped quantity
+    await db.update(stockTransferItems).set({
+      shippedQuantity: item.requestedQuantity
+    }).where(eq(stockTransferItems.id, item.id));
+  }
+  
+  await db.update(stockTransfers).set({
+    status: "IN_TRANSIT",
+    shippedAt: new Date()
+  }).where(eq(stockTransfers.id, id));
+}
+
+export async function receiveStockTransfer(id: number, receivedBy: number, receivedItems: { itemId: number; receivedQuantity: number }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const transfer = await getStockTransferWithItems(id);
+  if (!transfer) throw new Error("Transfer not found");
+  
+  // Add stock to destination unit
+  for (const received of receivedItems) {
+    const item = transfer.items.find(i => i.id === received.itemId);
+    if (!item) continue;
+    
+    await createUnitStockMovement({
+      unitId: transfer.toUnitId,
+      productId: item.productId,
+      variantId: item.variantId,
+      type: "IN",
+      reason: "TRANSFER_IN",
+      quantity: received.receivedQuantity,
+      previousStock: 0,
+      newStock: 0,
+      referenceId: id,
+      referenceType: "TRANSFER"
+    });
+    
+    // Update received quantity
+    await db.update(stockTransferItems).set({
+      receivedQuantity: received.receivedQuantity
+    }).where(eq(stockTransferItems.id, received.itemId));
+  }
+  
+  await db.update(stockTransfers).set({
+    status: "RECEIVED",
+    receivedAt: new Date(),
+    receivedBy
+  }).where(eq(stockTransfers.id, id));
+}
+
+// ==================== RETURNS FUNCTIONS ====================
+export async function createReturn(data: Omit<InsertReturn, 'returnNumber'>, items: Omit<InsertReturnItem, 'returnId'>[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const returnNumber = await generateOrderNumber("RET");
+  
+  const result = await db.insert(returns).values({
+    ...data,
+    returnNumber
+  });
+  
+  const returnId = result[0].insertId;
+  
+  // Insert items
+  for (const item of items) {
+    await db.insert(returnItems).values({
+      ...item,
+      returnId
+    });
+  }
+  
+  return { id: returnId, returnNumber };
+}
+
+export async function updateReturn(id: number, data: Partial<InsertReturn>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(returns).set(data).where(eq(returns.id, id));
+}
+
+export async function getReturnById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(returns).where(eq(returns.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getReturnWithItems(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const returnData = await getReturnById(id);
+  if (!returnData) return undefined;
+  
+  const items = await db.select().from(returnItems).where(eq(returnItems.returnId, id));
+  
+  // Get product details
+  const productIds = items.map(i => i.productId);
+  const productDetails = productIds.length > 0 
+    ? await db.select().from(products).where(inArray(products.id, productIds))
+    : [];
+  
+  const itemsWithProducts = items.map(item => ({
+    ...item,
+    product: productDetails.find(p => p.id === item.productId)
+  }));
+  
+  // Get customer and unit details
+  let customer = null;
+  let unit = null;
+  
+  if (returnData.customerId) {
+    customer = await getCustomerById(returnData.customerId);
+  }
+  if (returnData.unitId) {
+    unit = await getStoreUnitById(returnData.unitId);
+  }
+  
+  return {
+    ...returnData,
+    customer,
+    unit,
+    items: itemsWithProducts
+  };
+}
+
+export async function listReturns(filters: {
+  customerId?: number;
+  unitId?: number;
+  type?: string;
+  status?: string;
+  startDate?: Date;
+  endDate?: Date;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions = [];
+  if (filters.customerId) conditions.push(eq(returns.customerId, filters.customerId));
+  if (filters.unitId) conditions.push(eq(returns.unitId, filters.unitId));
+  if (filters.startDate) conditions.push(gte(returns.createdAt, filters.startDate));
+  if (filters.endDate) conditions.push(lte(returns.createdAt, filters.endDate));
+  
+  let query = db.select().from(returns);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as typeof query;
+  }
+  
+  return query.orderBy(desc(returns.createdAt));
+}
+
+export async function processReturn(id: number, processedBy: number, returnToStock: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const returnData = await getReturnWithItems(id);
+  if (!returnData) throw new Error("Return not found");
+  
+  if (returnToStock && returnData.unitId) {
+    // Return items to stock
+    for (const item of returnData.items) {
+      if (item.condition !== "DEFECTIVE" && item.condition !== "DAMAGED") {
+        await createUnitStockMovement({
+          unitId: returnData.unitId,
+          productId: item.productId,
+          variantId: item.variantId,
+          type: "IN",
+          reason: returnData.type === "EXCHANGE" ? "EXCHANGE" : "RETURN",
+          quantity: item.quantity,
+          previousStock: 0,
+          newStock: 0,
+          referenceId: id,
+          referenceType: "RETURN"
+        });
+        
+        // Mark as returned to stock
+        await db.update(returnItems).set({
+          returnedToStock: true
+        }).where(eq(returnItems.id, item.id));
+      }
+    }
+  }
+  
+  await db.update(returns).set({
+    status: "COMPLETED",
+    processedAt: new Date(),
+    processedBy
+  }).where(eq(returns.id, id));
+}
+
+// ==================== STOCK TURNOVER FUNCTIONS ====================
+export async function calculateStockTurnover(productId: number, unitId?: number, period?: string) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const currentPeriod = period || new Date().toISOString().substring(0, 7); // YYYY-MM
+  const [year, month] = currentPeriod.split('-').map(Number);
+  
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0);
+  
+  // Get movements for the period
+  const conditions = [
+    eq(unitStockMovements.productId, productId),
+    gte(unitStockMovements.createdAt, startDate),
+    lte(unitStockMovements.createdAt, endDate)
+  ];
+  if (unitId) conditions.push(eq(unitStockMovements.unitId, unitId));
+  
+  const movements = await db.select().from(unitStockMovements).where(and(...conditions));
+  
+  // Calculate metrics
+  const sales = movements.filter(m => m.reason === "SALE").reduce((sum, m) => sum + m.quantity, 0);
+  const purchases = movements.filter(m => m.reason === "PURCHASE").reduce((sum, m) => sum + m.quantity, 0);
+  
+  // Get current stock
+  let currentStock = 0;
+  if (unitId) {
+    const stock = await getUnitStock(unitId, productId);
+    currentStock = stock?.quantity ?? 0;
+  } else {
+    const consolidated = await getConsolidatedStock(productId);
+    currentStock = consolidated.total;
+  }
+  
+  const openingStock = currentStock + sales - purchases;
+  const averageStock = (openingStock + currentStock) / 2;
+  const turnoverRate = averageStock > 0 ? sales / averageStock : 0;
+  const daysInStock = turnoverRate > 0 ? Math.round(30 / turnoverRate) : 0;
+  
+  return {
+    period: currentPeriod,
+    openingStock,
+    closingStock: currentStock,
+    averageStock,
+    totalSold: sales,
+    totalPurchased: purchases,
+    turnoverRate,
+    daysInStock
+  };
+}
+
+export async function getStockTurnoverReport(unitId?: number, startPeriod?: string, endPeriod?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions = [];
+  if (unitId) conditions.push(eq(stockTurnover.unitId, unitId));
+  if (startPeriod) conditions.push(gte(stockTurnover.period, startPeriod));
+  if (endPeriod) conditions.push(lte(stockTurnover.period, endPeriod));
+  
+  let query = db.select().from(stockTurnover);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as typeof query;
+  }
+  
+  return query.orderBy(desc(stockTurnover.period));
+}
+
+// ==================== BARCODE FUNCTIONS ====================
+export async function findProductByBarcode(barcode: string) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  // First check in products table
+  const product = await db.select().from(products).where(eq(products.barcode, barcode)).limit(1);
+  if (product.length > 0) {
+    return { type: 'product', data: product[0] };
+  }
+  
+  // Then check in variants by SKU
+  const variant = await db.select().from(productVariants).where(eq(productVariants.sku, barcode)).limit(1);
+  if (variant.length > 0) {
+    const parentProduct = await getProductById(variant[0].productId);
+    return { type: 'variant', data: variant[0], product: parentProduct };
+  }
+  
+  return null;
+}
+
+// ==================== MULTI-UNIT DASHBOARD FUNCTIONS ====================
+export async function getMultiUnitDashboardStats(unitId?: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const units = await listStoreUnits();
+  
+  // Get stock by unit
+  const stockByUnit = await Promise.all(units.map(async (unit) => {
+    const stocks = await listUnitStockByUnit(unit.id);
+    const totalItems = stocks.reduce((sum, s) => sum + s.quantity, 0);
+    const totalValue = await Promise.all(stocks.map(async (s) => {
+      const product = await getProductById(s.productId);
+      return s.quantity * parseFloat(product?.costPrice || '0');
+    }));
+    
+    return {
+      unitId: unit.id,
+      unitName: unit.name,
+      unitType: unit.type,
+      totalItems,
+      totalValue: totalValue.reduce((sum, v) => sum + v, 0),
+      stockCount: stocks.length
+    };
+  }));
+  
+  // Get pending transfers
+  const pendingTransfers = await listStockTransfers({ status: "PENDING" });
+  const inTransitTransfers = await listStockTransfers({ status: "IN_TRANSIT" });
+  
+  // Get pending returns
+  const pendingReturns = await listReturns({ status: "PENDING" });
+  
+  // Calculate totals
+  const totalStock = stockByUnit.reduce((sum, u) => sum + u.totalItems, 0);
+  const totalValue = stockByUnit.reduce((sum, u) => sum + u.totalValue, 0);
+  
+  return {
+    units: stockByUnit,
+    totalStock,
+    totalValue,
+    pendingTransfersCount: pendingTransfers.length,
+    inTransitTransfersCount: inTransitTransfers.length,
+    pendingReturnsCount: pendingReturns.length
+  };
 }

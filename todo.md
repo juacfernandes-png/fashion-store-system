@@ -48,3 +48,17 @@
 
 ## Melhorias de Interface
 - [x] Implementar alternância entre tema claro e escuro
+
+## Gestão Multi-Loja e Estoque Avançado
+- [x] Cadastro de unidades (lojas físicas, CD, e-commerce)
+- [x] Estoque separado por unidade
+- [x] Visão centralizada da marca + visão individual por unidade
+- [x] Transferências internas entre lojas com histórico e aprovação
+- [x] Variações de produto (cor, tamanho, modelo)
+- [x] Movimentações automáticas (entrada: compra, devolução, transferência)
+- [x] Movimentações automáticas (saída: venda, troca, perda, ajuste)
+- [x] Histórico completo de movimentações (quem, quando, onde, por quê)
+- [x] Giro de estoque por produto e loja
+- [x] Trocas e devoluções com reentrada automática no estoque
+- [x] Registro de motivo de devolução (defeito, tamanho, arrependimento)
+- [x] Leitura de código de barras

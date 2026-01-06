@@ -317,3 +317,168 @@ export const stockAlerts = mysqlTable("stockAlerts", {
 
 export type StockAlert = typeof stockAlerts.$inferSelect;
 export type InsertStockAlert = typeof stockAlerts.$inferInsert;
+
+
+// ==================== UNIDADES (LOJAS, CD, E-COMMERCE) ====================
+export const storeUnits = mysqlTable("storeUnits", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 50 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: mysqlEnum("type", ["STORE", "WAREHOUSE", "ECOMMERCE"]).notNull(),
+  address: text("address"),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 2 }),
+  zipCode: varchar("zipCode", { length: 10 }),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 320 }),
+  manager: varchar("manager", { length: 255 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  isDefault: boolean("isDefault").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type StoreUnit = typeof storeUnits.$inferSelect;
+export type InsertStoreUnit = typeof storeUnits.$inferInsert;
+
+// ==================== ESTOQUE POR UNIDADE ====================
+export const unitStock = mysqlTable("unitStock", {
+  id: int("id").autoincrement().primaryKey(),
+  unitId: int("unitId").notNull(),
+  productId: int("productId").notNull(),
+  variantId: int("variantId"),
+  quantity: int("quantity").default(0).notNull(),
+  minStock: int("minStock").default(0).notNull(),
+  maxStock: int("maxStock").default(1000).notNull(),
+  reservedQuantity: int("reservedQuantity").default(0).notNull(),
+  availableQuantity: int("availableQuantity").default(0).notNull(),
+  lastMovementAt: timestamp("lastMovementAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type UnitStock = typeof unitStock.$inferSelect;
+export type InsertUnitStock = typeof unitStock.$inferInsert;
+
+// ==================== TRANSFERÊNCIAS ENTRE UNIDADES ====================
+export const stockTransfers = mysqlTable("stockTransfers", {
+  id: int("id").autoincrement().primaryKey(),
+  transferNumber: varchar("transferNumber", { length: 50 }).notNull().unique(),
+  fromUnitId: int("fromUnitId").notNull(),
+  toUnitId: int("toUnitId").notNull(),
+  status: mysqlEnum("status", ["DRAFT", "PENDING", "APPROVED", "IN_TRANSIT", "RECEIVED", "CANCELLED"]).default("DRAFT").notNull(),
+  requestedAt: timestamp("requestedAt").defaultNow().notNull(),
+  approvedAt: timestamp("approvedAt"),
+  approvedBy: int("approvedBy"),
+  shippedAt: timestamp("shippedAt"),
+  receivedAt: timestamp("receivedAt"),
+  receivedBy: int("receivedBy"),
+  notes: text("notes"),
+  requestedBy: int("requestedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type StockTransfer = typeof stockTransfers.$inferSelect;
+export type InsertStockTransfer = typeof stockTransfers.$inferInsert;
+
+// ==================== ITENS DA TRANSFERÊNCIA ====================
+export const stockTransferItems = mysqlTable("stockTransferItems", {
+  id: int("id").autoincrement().primaryKey(),
+  transferId: int("transferId").notNull(),
+  productId: int("productId").notNull(),
+  variantId: int("variantId"),
+  requestedQuantity: int("requestedQuantity").notNull(),
+  shippedQuantity: int("shippedQuantity").default(0).notNull(),
+  receivedQuantity: int("receivedQuantity").default(0).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type StockTransferItem = typeof stockTransferItems.$inferSelect;
+export type InsertStockTransferItem = typeof stockTransferItems.$inferInsert;
+
+// ==================== TROCAS E DEVOLUÇÕES ====================
+export const returns = mysqlTable("returns", {
+  id: int("id").autoincrement().primaryKey(),
+  returnNumber: varchar("returnNumber", { length: 50 }).notNull().unique(),
+  salesOrderId: int("salesOrderId"),
+  customerId: int("customerId"),
+  unitId: int("unitId"),
+  type: mysqlEnum("type", ["RETURN", "EXCHANGE"]).notNull(),
+  status: mysqlEnum("status", ["PENDING", "APPROVED", "PROCESSING", "COMPLETED", "REJECTED"]).default("PENDING").notNull(),
+  reason: mysqlEnum("reason", ["DEFECT", "WRONG_SIZE", "WRONG_COLOR", "REGRET", "DAMAGED", "OTHER"]).notNull(),
+  reasonDetails: text("reasonDetails"),
+  refundAmount: decimal("refundAmount", { precision: 12, scale: 2 }).default("0"),
+  refundMethod: mysqlEnum("refundMethod", ["CASH", "CREDIT", "STORE_CREDIT", "EXCHANGE"]),
+  processedAt: timestamp("processedAt"),
+  processedBy: int("processedBy"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Return = typeof returns.$inferSelect;
+export type InsertReturn = typeof returns.$inferInsert;
+
+// ==================== ITENS DA TROCA/DEVOLUÇÃO ====================
+export const returnItems = mysqlTable("returnItems", {
+  id: int("id").autoincrement().primaryKey(),
+  returnId: int("returnId").notNull(),
+  productId: int("productId").notNull(),
+  variantId: int("variantId"),
+  quantity: int("quantity").notNull(),
+  unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }).notNull(),
+  condition: mysqlEnum("condition", ["NEW", "USED", "DAMAGED", "DEFECTIVE"]).default("USED").notNull(),
+  returnedToStock: boolean("returnedToStock").default(false).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ReturnItem = typeof returnItems.$inferSelect;
+export type InsertReturnItem = typeof returnItems.$inferInsert;
+
+// ==================== MOVIMENTAÇÕES DE ESTOQUE POR UNIDADE ====================
+export const unitStockMovements = mysqlTable("unitStockMovements", {
+  id: int("id").autoincrement().primaryKey(),
+  unitId: int("unitId").notNull(),
+  productId: int("productId").notNull(),
+  variantId: int("variantId"),
+  type: mysqlEnum("type", ["IN", "OUT", "ADJUSTMENT"]).notNull(),
+  reason: mysqlEnum("reason", ["PURCHASE", "SALE", "RETURN", "EXCHANGE", "LOSS", "ADJUSTMENT", "TRANSFER_IN", "TRANSFER_OUT", "INVENTORY"]).notNull(),
+  quantity: int("quantity").notNull(),
+  previousStock: int("previousStock").notNull(),
+  newStock: int("newStock").notNull(),
+  unitCost: decimal("unitCost", { precision: 10, scale: 2 }),
+  referenceId: int("referenceId"),
+  referenceType: varchar("referenceType", { length: 50 }),
+  batch: varchar("batch", { length: 50 }),
+  barcode: varchar("barcode", { length: 100 }),
+  notes: text("notes"),
+  userId: int("userId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type UnitStockMovement = typeof unitStockMovements.$inferSelect;
+export type InsertUnitStockMovement = typeof unitStockMovements.$inferInsert;
+
+// ==================== GIRO DE ESTOQUE ====================
+export const stockTurnover = mysqlTable("stockTurnover", {
+  id: int("id").autoincrement().primaryKey(),
+  unitId: int("unitId"),
+  productId: int("productId").notNull(),
+  variantId: int("variantId"),
+  period: varchar("period", { length: 7 }).notNull(), // YYYY-MM
+  openingStock: int("openingStock").default(0).notNull(),
+  closingStock: int("closingStock").default(0).notNull(),
+  averageStock: decimal("averageStock", { precision: 10, scale: 2 }).default("0").notNull(),
+  totalSold: int("totalSold").default(0).notNull(),
+  totalPurchased: int("totalPurchased").default(0).notNull(),
+  turnoverRate: decimal("turnoverRate", { precision: 10, scale: 4 }).default("0").notNull(),
+  daysInStock: int("daysInStock").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type StockTurnover = typeof stockTurnover.$inferSelect;
+export type InsertStockTurnover = typeof stockTurnover.$inferInsert;
