@@ -62,3 +62,26 @@
 - [x] Trocas e devoluções com reentrada automática no estoque
 - [x] Registro de motivo de devolução (defeito, tamanho, arrependimento)
 - [x] Leitura de código de barras
+
+## Sistema Financeiro Avançado
+- [x] Fluxo de caixa real e projetado (entradas/saídas)
+- [x] Visão por loja, marca consolidada e centro de custo
+- [x] Contas a pagar com lançamentos recorrentes e parcelados
+- [x] Alertas de vencimento e fluxo de aprovação
+- [x] Contas a receber com recebíveis de cartão (D+1/D+30)
+- [x] Conciliação bancária (vendas vs recebimentos)
+- [x] Custo médio ponderado e CMV por produto/categoria/loja
+- [x] Margem bruta e lucro por item
+- [x] Pedido de compra → estoque → conta a pagar automático
+- [x] Precificação inteligente com simulador de margem
+- [x] DRE simplificado mensal
+- [x] Conciliação de vendas vs banco
+- [x] Taxas de adquirência e chargebacks
+- [x] Logs e trilhas de auditoria (quem/quando/por quê)
+- [x] Resultado por unidade + consolidado
+- [x] Ranking de performance por loja
+- [x] Curva ABC de rentabilidade (lucro)
+- [x] Capital parado em estoque
+- [x] Cobertura de estoque (dias)
+- [x] Ruptura e perda de venda estimada
+- [x] ROI de promoções

@@ -42,7 +42,15 @@ import {
   Store,
   ArrowLeftRight,
   RotateCcw,
-  Warehouse
+  Warehouse,
+  Wallet,
+  CreditCard,
+  Receipt,
+  Calculator,
+  FileCheck,
+  FileText,
+  TrendingUp,
+  Shield
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -53,20 +61,27 @@ import { trpc } from "@/lib/trpc";
 import { useTheme } from "@/contexts/ThemeContext";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: Package, label: "Produtos", path: "/products" },
-  { icon: Tag, label: "Categorias", path: "/categories" },
-  { icon: Building2, label: "Fornecedores", path: "/suppliers" },
-  { icon: Boxes, label: "Estoque", path: "/stock" },
-  { icon: Store, label: "Unidades", path: "/units" },
-  { icon: Warehouse, label: "Estoque por Unidade", path: "/unit-stock" },
-  { icon: ArrowLeftRight, label: "Transferências", path: "/transfers" },
-  { icon: RotateCcw, label: "Trocas/Devoluções", path: "/returns" },
-  { icon: Users, label: "Clientes", path: "/customers" },
-  { icon: ShoppingCart, label: "Vendas", path: "/sales" },
-  { icon: Truck, label: "Compras", path: "/purchases" },
-  { icon: DollarSign, label: "Financeiro", path: "/financial" },
-  { icon: BarChart3, label: "Relatórios", path: "/reports" },
+  { icon: LayoutDashboard, label: "Dashboard", path: "/", section: "principal" },
+  { icon: Package, label: "Produtos", path: "/products", section: "estoque" },
+  { icon: Tag, label: "Categorias", path: "/categories", section: "estoque" },
+  { icon: Building2, label: "Fornecedores", path: "/suppliers", section: "estoque" },
+  { icon: Boxes, label: "Estoque", path: "/stock", section: "estoque" },
+  { icon: Store, label: "Unidades", path: "/units", section: "multiloja" },
+  { icon: Warehouse, label: "Estoque por Unidade", path: "/unit-stock", section: "multiloja" },
+  { icon: ArrowLeftRight, label: "Transferências", path: "/transfers", section: "multiloja" },
+  { icon: RotateCcw, label: "Trocas/Devoluções", path: "/returns", section: "multiloja" },
+  { icon: Users, label: "Clientes", path: "/customers", section: "crm" },
+  { icon: ShoppingCart, label: "Vendas", path: "/sales", section: "crm" },
+  { icon: Truck, label: "Compras", path: "/purchases", section: "crm" },
+  { icon: Wallet, label: "Fluxo de Caixa", path: "/cash-flow", section: "financeiro" },
+  { icon: CreditCard, label: "Contas a Pagar", path: "/payables", section: "financeiro" },
+  { icon: Receipt, label: "Contas a Receber", path: "/receivables", section: "financeiro" },
+  { icon: Calculator, label: "Precificação", path: "/pricing", section: "financeiro" },
+  { icon: FileCheck, label: "Conciliação", path: "/reconciliation", section: "financeiro" },
+  { icon: FileText, label: "DRE", path: "/dre", section: "relatorios" },
+  { icon: TrendingUp, label: "Relatórios Financeiros", path: "/financial-reports", section: "relatorios" },
+  { icon: BarChart3, label: "Relatórios de Estoque", path: "/reports", section: "relatorios" },
+  { icon: Shield, label: "Logs de Auditoria", path: "/audit-logs", section: "sistema" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

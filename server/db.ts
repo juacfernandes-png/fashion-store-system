@@ -24,7 +24,23 @@ import {
   returns, InsertReturn, Return,
   returnItems, InsertReturnItem, ReturnItem,
   unitStockMovements, InsertUnitStockMovement, UnitStockMovement,
-  stockTurnover, InsertStockTurnover, StockTurnover
+  stockTurnover, InsertStockTurnover, StockTurnover,
+  // Novas tabelas financeiras
+  costCenters, InsertCostCenter, CostCenter,
+  accountsPayableAdvanced, InsertAccountPayableAdvanced, AccountPayableAdvanced,
+  accountsReceivableAdvanced, InsertAccountReceivableAdvanced, AccountReceivableAdvanced,
+  cashFlow, InsertCashFlow, CashFlow,
+  bankReconciliation, InsertBankReconciliation, BankReconciliation,
+  reconciliationItems, InsertReconciliationItem, ReconciliationItem,
+  productCosts, InsertProductCost, ProductCost,
+  cmvRecords, InsertCMVRecord, CMVRecord,
+  dreRecords, InsertDRERecord, DRERecord,
+  auditLogs, InsertAuditLog, AuditLog,
+  pricingRules, InsertPricingRule, PricingRule,
+  promotions, InsertPromotion, Promotion,
+  supplierHistory, InsertSupplierHistory, SupplierHistory,
+  stockAnalysis, InsertStockAnalysis, StockAnalysis,
+  unitPerformance, InsertUnitPerformance, UnitPerformance
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1800,4 +1816,1178 @@ export async function getMultiUnitDashboardStats(unitId?: number) {
     inTransitTransfersCount: inTransitTransfers.length,
     pendingReturnsCount: pendingReturns.length
   };
+}
+
+
+// ==================== COST CENTER FUNCTIONS ====================
+export async function createCostCenter(data: InsertCostCenter) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(costCenters).values(data);
+}
+
+export async function updateCostCenter(id: number, data: Partial<InsertCostCenter>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(costCenters).set(data).where(eq(costCenters.id, id));
+}
+
+export async function listCostCenters(activeOnly = true) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = activeOnly ? [eq(costCenters.isActive, true)] : [];
+  return db.select().from(costCenters).where(and(...conditions)).orderBy(asc(costCenters.name));
+}
+
+export async function getCostCenterById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(costCenters).where(eq(costCenters.id, id)).limit(1);
+  return result[0];
+}
+
+// ==================== ACCOUNTS PAYABLE ADVANCED FUNCTIONS ====================
+export async function createAccountPayableAdvanced(data: Partial<InsertAccountPayableAdvanced>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(accountsPayableAdvanced).values(data as InsertAccountPayableAdvanced);
+}
+
+export async function updateAccountPayableAdvanced(id: number, data: Partial<InsertAccountPayableAdvanced>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(accountsPayableAdvanced).set(data).where(eq(accountsPayableAdvanced.id, id));
+}
+
+export async function getAccountPayableAdvancedById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(accountsPayableAdvanced).where(eq(accountsPayableAdvanced.id, id)).limit(1);
+  return result[0];
+}
+
+export async function listAccountsPayableAdvanced(filters: {
+  status?: string;
+  approvalStatus?: string;
+  unitId?: number;
+  costCenterId?: number;
+  supplierId?: number;
+  category?: string;
+  startDate?: Date;
+  endDate?: Date;
+  isRecurring?: boolean;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters.status) conditions.push(eq(accountsPayableAdvanced.status, filters.status as any));
+  if (filters.approvalStatus) conditions.push(eq(accountsPayableAdvanced.approvalStatus, filters.approvalStatus as any));
+  if (filters.unitId) conditions.push(eq(accountsPayableAdvanced.unitId, filters.unitId));
+  if (filters.costCenterId) conditions.push(eq(accountsPayableAdvanced.costCenterId, filters.costCenterId));
+  if (filters.supplierId) conditions.push(eq(accountsPayableAdvanced.supplierId, filters.supplierId));
+  if (filters.category) conditions.push(eq(accountsPayableAdvanced.category, filters.category as any));
+  if (filters.startDate) conditions.push(gte(accountsPayableAdvanced.dueDate, filters.startDate));
+  if (filters.endDate) conditions.push(lte(accountsPayableAdvanced.dueDate, filters.endDate));
+  if (filters.isRecurring !== undefined) conditions.push(eq(accountsPayableAdvanced.isRecurring, filters.isRecurring));
+  
+  let query = db.select().from(accountsPayableAdvanced);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(asc(accountsPayableAdvanced.dueDate)).limit(filters.limit || 1000);
+}
+
+export async function approveAccountPayable(id: number, approvedBy: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(accountsPayableAdvanced).set({
+    approvalStatus: "APPROVED",
+    approvedBy,
+    approvedAt: new Date()
+  }).where(eq(accountsPayableAdvanced.id, id));
+}
+
+export async function rejectAccountPayable(id: number, approvedBy: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(accountsPayableAdvanced).set({
+    approvalStatus: "REJECTED",
+    approvedBy,
+    approvedAt: new Date()
+  }).where(eq(accountsPayableAdvanced.id, id));
+}
+
+export async function payAccountPayableAdvanced(id: number, amount: number, paymentMethod: string, bankAccount?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const account = await getAccountPayableAdvancedById(id);
+  if (!account) throw new Error("Account not found");
+  
+  const newPaidAmount = parseFloat(account.paidAmount) + amount;
+  const totalAmount = parseFloat(account.amount);
+  const newStatus = newPaidAmount >= totalAmount ? "PAID" : "PARTIAL";
+  
+  await db.update(accountsPayableAdvanced).set({
+    paidAmount: newPaidAmount.toFixed(2),
+    status: newStatus,
+    paidDate: newStatus === "PAID" ? new Date() : undefined,
+    paymentMethod: paymentMethod as any,
+    bankAccount
+  }).where(eq(accountsPayableAdvanced.id, id));
+  
+  // Criar registro no fluxo de caixa
+  await createCashFlowEntry({
+    type: "EXPENSE",
+    category: account.category === "SUPPLIER" ? "SUPPLIERS" : 
+              account.category === "RENT" ? "RENT" :
+              account.category === "SALARY" ? "SALARY" :
+              account.category === "TAX" ? "TAX" :
+              account.category === "MARKETING" ? "MARKETING" :
+              account.category === "FREIGHT" ? "FREIGHT" : "OTHER_EXPENSE",
+    description: account.description,
+    amount: amount.toFixed(2),
+    transactionDate: new Date(),
+    unitId: account.unitId || undefined,
+    costCenterId: account.costCenterId || undefined,
+    referenceId: id,
+    referenceType: "ACCOUNT_PAYABLE",
+    paymentMethod: paymentMethod as any,
+    bankAccount,
+    isProjected: false,
+    isReconciled: false
+  });
+}
+
+// ==================== ACCOUNTS RECEIVABLE ADVANCED FUNCTIONS ====================
+export async function createAccountReceivableAdvanced(data: Partial<InsertAccountReceivableAdvanced>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(accountsReceivableAdvanced).values(data as InsertAccountReceivableAdvanced);
+}
+
+export async function updateAccountReceivableAdvanced(id: number, data: Partial<InsertAccountReceivableAdvanced>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(accountsReceivableAdvanced).set(data).where(eq(accountsReceivableAdvanced.id, id));
+}
+
+export async function getAccountReceivableAdvancedById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(accountsReceivableAdvanced).where(eq(accountsReceivableAdvanced.id, id)).limit(1);
+  return result[0];
+}
+
+export async function listAccountsReceivableAdvanced(filters: {
+  status?: string;
+  unitId?: number;
+  customerId?: number;
+  paymentMethod?: string;
+  startDate?: Date;
+  endDate?: Date;
+  isReconciled?: boolean;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters.status) conditions.push(eq(accountsReceivableAdvanced.status, filters.status as any));
+  if (filters.unitId) conditions.push(eq(accountsReceivableAdvanced.unitId, filters.unitId));
+  if (filters.customerId) conditions.push(eq(accountsReceivableAdvanced.customerId, filters.customerId));
+  if (filters.paymentMethod) conditions.push(eq(accountsReceivableAdvanced.paymentMethod, filters.paymentMethod as any));
+  if (filters.startDate) conditions.push(gte(accountsReceivableAdvanced.dueDate, filters.startDate));
+  if (filters.endDate) conditions.push(lte(accountsReceivableAdvanced.dueDate, filters.endDate));
+  if (filters.isReconciled !== undefined) conditions.push(eq(accountsReceivableAdvanced.isReconciled, filters.isReconciled));
+  
+  let query = db.select().from(accountsReceivableAdvanced);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(asc(accountsReceivableAdvanced.dueDate)).limit(filters.limit || 1000);
+}
+
+export async function receiveAccountReceivableAdvanced(id: number, amount: number, paymentMethod: string, bankAccount?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const account = await getAccountReceivableAdvancedById(id);
+  if (!account) throw new Error("Account not found");
+  
+  const newReceivedAmount = parseFloat(account.receivedAmount) + amount;
+  const totalAmount = parseFloat(account.amount);
+  const newStatus = newReceivedAmount >= totalAmount ? "RECEIVED" : "PARTIAL";
+  
+  await db.update(accountsReceivableAdvanced).set({
+    receivedAmount: newReceivedAmount.toFixed(2),
+    status: newStatus,
+    receivedDate: newStatus === "RECEIVED" ? new Date() : undefined,
+    paymentMethod: paymentMethod as any,
+    bankAccount
+  }).where(eq(accountsReceivableAdvanced.id, id));
+  
+  // Criar registro no fluxo de caixa
+  await createCashFlowEntry({
+    type: "INCOME",
+    category: "RECEIVABLES",
+    description: account.description,
+    amount: amount.toFixed(2),
+    transactionDate: new Date(),
+    unitId: account.unitId || undefined,
+    referenceId: id,
+    referenceType: "ACCOUNT_RECEIVABLE",
+    paymentMethod: paymentMethod as any,
+    bankAccount,
+    isProjected: false,
+    isReconciled: false
+  });
+}
+
+export async function reconcileAccountReceivable(id: number, reconciledBy: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(accountsReceivableAdvanced).set({
+    isReconciled: true,
+    reconciledAt: new Date(),
+    reconciledBy
+  }).where(eq(accountsReceivableAdvanced.id, id));
+}
+
+// ==================== CASH FLOW FUNCTIONS ====================
+export async function createCashFlowEntry(data: Partial<InsertCashFlow>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(cashFlow).values(data as InsertCashFlow);
+}
+
+export async function updateCashFlowEntry(id: number, data: Partial<InsertCashFlow>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(cashFlow).set(data).where(eq(cashFlow.id, id));
+}
+
+export async function listCashFlow(filters: {
+  type?: string;
+  category?: string;
+  unitId?: number;
+  costCenterId?: number;
+  startDate?: Date;
+  endDate?: Date;
+  isProjected?: boolean;
+  isReconciled?: boolean;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters.type) conditions.push(eq(cashFlow.type, filters.type as any));
+  if (filters.category) conditions.push(eq(cashFlow.category, filters.category as any));
+  if (filters.unitId) conditions.push(eq(cashFlow.unitId, filters.unitId));
+  if (filters.costCenterId) conditions.push(eq(cashFlow.costCenterId, filters.costCenterId));
+  if (filters.startDate) conditions.push(gte(cashFlow.transactionDate, filters.startDate));
+  if (filters.endDate) conditions.push(lte(cashFlow.transactionDate, filters.endDate));
+  if (filters.isProjected !== undefined) conditions.push(eq(cashFlow.isProjected, filters.isProjected));
+  if (filters.isReconciled !== undefined) conditions.push(eq(cashFlow.isReconciled, filters.isReconciled));
+  
+  let query = db.select().from(cashFlow);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(desc(cashFlow.transactionDate)).limit(filters.limit || 1000);
+}
+
+export async function getCashFlowSummary(filters: {
+  unitId?: number;
+  costCenterId?: number;
+  startDate?: Date;
+  endDate?: Date;
+  isProjected?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return { income: 0, expense: 0, balance: 0, byCategory: [] };
+  
+  const entries = await listCashFlow({
+    ...filters,
+    limit: 10000
+  });
+  
+  let income = 0;
+  let expense = 0;
+  const byCategory: Record<string, { income: number; expense: number }> = {};
+  
+  for (const entry of entries) {
+    const amount = parseFloat(entry.amount);
+    if (entry.type === "INCOME") {
+      income += amount;
+    } else {
+      expense += amount;
+    }
+    
+    if (!byCategory[entry.category]) {
+      byCategory[entry.category] = { income: 0, expense: 0 };
+    }
+    if (entry.type === "INCOME") {
+      byCategory[entry.category].income += amount;
+    } else {
+      byCategory[entry.category].expense += amount;
+    }
+  }
+  
+  return {
+    income,
+    expense,
+    balance: income - expense,
+    byCategory: Object.entries(byCategory).map(([category, values]) => ({
+      category,
+      ...values,
+      balance: values.income - values.expense
+    }))
+  };
+}
+
+export async function reconcileCashFlowEntry(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(cashFlow).set({
+    isReconciled: true,
+    reconciledAt: new Date()
+  }).where(eq(cashFlow.id, id));
+}
+
+// ==================== PRODUCT COST FUNCTIONS ====================
+export async function updateProductCost(productId: number, variantId: number | null, unitId: number | null, quantity: number, unitCost: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Buscar custo atual
+  const conditions: any[] = [eq(productCosts.productId, productId)];
+  if (variantId) conditions.push(eq(productCosts.variantId, variantId));
+  if (unitId) conditions.push(eq(productCosts.unitId, unitId));
+  
+  const existing = await db.select().from(productCosts).where(and(...conditions)).limit(1);
+  
+  if (existing.length > 0) {
+    const current = existing[0];
+    const currentQty = current.totalQuantity;
+    const currentValue = parseFloat(current.totalValue);
+    const newQty = currentQty + quantity;
+    const newValue = currentValue + (quantity * unitCost);
+    const newAvgCost = newQty > 0 ? newValue / newQty : unitCost;
+    
+    await db.update(productCosts).set({
+      averageCost: newAvgCost.toFixed(4),
+      lastPurchaseCost: unitCost.toFixed(2),
+      totalQuantity: newQty,
+      totalValue: newValue.toFixed(2),
+      lastUpdated: new Date()
+    }).where(eq(productCosts.id, current.id));
+  } else {
+    await db.insert(productCosts).values({
+      productId,
+      variantId,
+      unitId,
+      averageCost: unitCost.toFixed(4),
+      lastPurchaseCost: unitCost.toFixed(2),
+      totalQuantity: quantity,
+      totalValue: (quantity * unitCost).toFixed(2)
+    });
+  }
+}
+
+export async function getProductCost(productId: number, variantId?: number, unitId?: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const conditions: any[] = [eq(productCosts.productId, productId)];
+  if (variantId) conditions.push(eq(productCosts.variantId, variantId));
+  if (unitId) conditions.push(eq(productCosts.unitId, unitId));
+  
+  const result = await db.select().from(productCosts).where(and(...conditions)).limit(1);
+  return result[0] || null;
+}
+
+// ==================== CMV FUNCTIONS ====================
+export async function calculateCMV(period: string, unitId?: number, productId?: number, categoryId?: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  // Calcular estoque inicial (último fechamento ou zero)
+  const prevPeriod = getPreviousPeriod(period);
+  const prevCMV = await db.select().from(cmvRecords)
+    .where(and(
+      eq(cmvRecords.period, prevPeriod),
+      unitId ? eq(cmvRecords.unitId, unitId) : sql`1=1`,
+      productId ? eq(cmvRecords.productId, productId) : sql`1=1`,
+      categoryId ? eq(cmvRecords.categoryId, categoryId) : sql`1=1`
+    )).limit(1);
+  
+  const openingInventory = prevCMV.length > 0 ? parseFloat(prevCMV[0].closingInventory) : 0;
+  
+  // Calcular compras do período
+  const [year, month] = period.split('-').map(Number);
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+  
+  const purchaseConditions: any[] = [
+    gte(purchaseOrders.receivedDate, startDate),
+    lte(purchaseOrders.receivedDate, endDate),
+    eq(purchaseOrders.status, "RECEIVED")
+  ];
+  
+  const purchasesResult = await db.select({
+    total: sql<string>`COALESCE(SUM(${purchaseOrders.total}), 0)`
+  }).from(purchaseOrders).where(and(...purchaseConditions));
+  
+  const purchases = parseFloat(purchasesResult[0]?.total || "0");
+  
+  // Calcular estoque final (valor atual em estoque)
+  const stockConditions: any[] = [];
+  if (unitId) stockConditions.push(eq(unitStock.unitId, unitId));
+  if (productId) stockConditions.push(eq(unitStock.productId, productId));
+  
+  let closingInventory = 0;
+  if (stockConditions.length > 0) {
+    const stockResult = await db.select().from(unitStock).where(and(...stockConditions));
+    for (const s of stockResult) {
+      const cost = await getProductCost(s.productId, s.variantId || undefined, s.unitId);
+      closingInventory += s.quantity * parseFloat(cost?.averageCost || "0");
+    }
+  } else {
+    const allProducts = await db.select().from(products);
+    for (const p of allProducts) {
+      closingInventory += p.currentStock * parseFloat(p.costPrice);
+    }
+  }
+  
+  // CMV = Estoque Inicial + Compras - Estoque Final
+  const cmv = openingInventory + purchases - closingInventory;
+  
+  // Calcular receita do período
+  const salesConditions: any[] = [
+    gte(salesOrders.orderDate, startDate),
+    lte(salesOrders.orderDate, endDate),
+    inArray(salesOrders.status, ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"])
+  ];
+  
+  const salesResult = await db.select({
+    total: sql<string>`COALESCE(SUM(${salesOrders.total}), 0)`
+  }).from(salesOrders).where(and(...salesConditions));
+  
+  const revenue = parseFloat(salesResult[0]?.total || "0");
+  const grossMargin = revenue - cmv;
+  const grossMarginPercent = revenue > 0 ? (grossMargin / revenue) * 100 : 0;
+  
+  // Salvar ou atualizar registro
+  const existingCMV = await db.select().from(cmvRecords)
+    .where(and(
+      eq(cmvRecords.period, period),
+      unitId ? eq(cmvRecords.unitId, unitId) : sql`${cmvRecords.unitId} IS NULL`,
+      productId ? eq(cmvRecords.productId, productId) : sql`${cmvRecords.productId} IS NULL`,
+      categoryId ? eq(cmvRecords.categoryId, categoryId) : sql`${cmvRecords.categoryId} IS NULL`
+    )).limit(1);
+  
+  const cmvData = {
+    period,
+    unitId,
+    productId,
+    categoryId,
+    openingInventory: openingInventory.toFixed(2),
+    purchases: purchases.toFixed(2),
+    closingInventory: closingInventory.toFixed(2),
+    cmv: cmv.toFixed(2),
+    revenue: revenue.toFixed(2),
+    grossMargin: grossMargin.toFixed(2),
+    grossMarginPercent: grossMarginPercent.toFixed(2)
+  };
+  
+  if (existingCMV.length > 0) {
+    await db.update(cmvRecords).set(cmvData).where(eq(cmvRecords.id, existingCMV[0].id));
+  } else {
+    await db.insert(cmvRecords).values(cmvData);
+  }
+  
+  return cmvData;
+}
+
+export async function getCMVReport(filters: { period?: string; unitId?: number; productId?: number; categoryId?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters.period) conditions.push(eq(cmvRecords.period, filters.period));
+  if (filters.unitId) conditions.push(eq(cmvRecords.unitId, filters.unitId));
+  if (filters.productId) conditions.push(eq(cmvRecords.productId, filters.productId));
+  if (filters.categoryId) conditions.push(eq(cmvRecords.categoryId, filters.categoryId));
+  
+  let query = db.select().from(cmvRecords);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(desc(cmvRecords.period));
+}
+
+// ==================== DRE FUNCTIONS ====================
+export async function calculateDRE(period: string, unitId?: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [year, month] = period.split('-').map(Number);
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+  
+  // Receita Bruta (vendas)
+  const salesConditions: any[] = [
+    gte(salesOrders.orderDate, startDate),
+    lte(salesOrders.orderDate, endDate),
+    inArray(salesOrders.status, ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"])
+  ];
+  
+  const salesResult = await db.select({
+    grossRevenue: sql<string>`COALESCE(SUM(${salesOrders.subtotal}), 0)`,
+    discounts: sql<string>`COALESCE(SUM(${salesOrders.discount}), 0)`,
+    netRevenue: sql<string>`COALESCE(SUM(${salesOrders.total}), 0)`
+  }).from(salesOrders).where(and(...salesConditions));
+  
+  const grossRevenue = parseFloat(salesResult[0]?.grossRevenue || "0");
+  const discounts = parseFloat(salesResult[0]?.discounts || "0");
+  
+  // Devoluções
+  const returnsResult = await db.select({
+    total: sql<string>`COALESCE(SUM(${returns.refundAmount}), 0)`
+  }).from(returns).where(and(
+    gte(returns.createdAt, startDate),
+    lte(returns.createdAt, endDate),
+    eq(returns.status, "COMPLETED"),
+    eq(returns.type, "RETURN")
+  ));
+  
+  const returnsAmount = parseFloat(returnsResult[0]?.total || "0");
+  const netRevenue = grossRevenue - discounts - returnsAmount;
+  
+  // CMV
+  const cmvData = await calculateCMV(period, unitId);
+  const cmv = parseFloat(cmvData?.cmv || "0");
+  const grossProfit = netRevenue - cmv;
+  const grossMarginPercent = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
+  
+  // Despesas Operacionais (do fluxo de caixa)
+  const expenseConditions: any[] = [
+    eq(cashFlow.type, "EXPENSE"),
+    gte(cashFlow.transactionDate, startDate),
+    lte(cashFlow.transactionDate, endDate),
+    eq(cashFlow.isProjected, false)
+  ];
+  if (unitId) expenseConditions.push(eq(cashFlow.unitId, unitId));
+  
+  const expenses = await db.select().from(cashFlow).where(and(...expenseConditions));
+  
+  let salaryExpenses = 0;
+  let rentExpenses = 0;
+  let marketingExpenses = 0;
+  let utilityExpenses = 0;
+  let freightExpenses = 0;
+  let taxes = 0;
+  let acquirerFees = 0;
+  let otherExpenses = 0;
+  
+  for (const exp of expenses) {
+    const amount = parseFloat(exp.amount);
+    switch (exp.category) {
+      case "SALARY": salaryExpenses += amount; break;
+      case "RENT": rentExpenses += amount; break;
+      case "MARKETING": marketingExpenses += amount; break;
+      case "UTILITIES": utilityExpenses += amount; break;
+      case "FREIGHT": freightExpenses += amount; break;
+      case "TAX": taxes += amount; break;
+      case "FEES": acquirerFees += amount; break;
+      default: otherExpenses += amount;
+    }
+  }
+  
+  const totalOperatingExpenses = salaryExpenses + rentExpenses + marketingExpenses + utilityExpenses + freightExpenses + otherExpenses;
+  const operatingProfit = grossProfit - totalOperatingExpenses;
+  const operatingMarginPercent = netRevenue > 0 ? (operatingProfit / netRevenue) * 100 : 0;
+  
+  const totalTaxesAndFees = taxes + acquirerFees;
+  const netProfit = operatingProfit - totalTaxesAndFees;
+  const netMarginPercent = netRevenue > 0 ? (netProfit / netRevenue) * 100 : 0;
+  
+  // Salvar ou atualizar DRE
+  const existingDRE = await db.select().from(dreRecords)
+    .where(and(
+      eq(dreRecords.period, period),
+      unitId ? eq(dreRecords.unitId, unitId) : sql`${dreRecords.unitId} IS NULL`
+    )).limit(1);
+  
+  const dreData = {
+    period,
+    unitId,
+    grossRevenue: grossRevenue.toFixed(2),
+    returns: returnsAmount.toFixed(2),
+    discounts: discounts.toFixed(2),
+    netRevenue: netRevenue.toFixed(2),
+    cmv: cmv.toFixed(2),
+    grossProfit: grossProfit.toFixed(2),
+    grossMarginPercent: grossMarginPercent.toFixed(2),
+    salaryExpenses: salaryExpenses.toFixed(2),
+    rentExpenses: rentExpenses.toFixed(2),
+    marketingExpenses: marketingExpenses.toFixed(2),
+    utilityExpenses: utilityExpenses.toFixed(2),
+    freightExpenses: freightExpenses.toFixed(2),
+    otherExpenses: otherExpenses.toFixed(2),
+    totalOperatingExpenses: totalOperatingExpenses.toFixed(2),
+    operatingProfit: operatingProfit.toFixed(2),
+    operatingMarginPercent: operatingMarginPercent.toFixed(2),
+    taxes: taxes.toFixed(2),
+    acquirerFees: acquirerFees.toFixed(2),
+    otherFees: "0.00",
+    totalTaxesAndFees: totalTaxesAndFees.toFixed(2),
+    netProfit: netProfit.toFixed(2),
+    netMarginPercent: netMarginPercent.toFixed(2)
+  };
+  
+  if (existingDRE.length > 0) {
+    await db.update(dreRecords).set(dreData).where(eq(dreRecords.id, existingDRE[0].id));
+  } else {
+    await db.insert(dreRecords).values(dreData);
+  }
+  
+  return dreData;
+}
+
+export async function getDREReport(filters: { period?: string; unitId?: number; startPeriod?: string; endPeriod?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters.period) conditions.push(eq(dreRecords.period, filters.period));
+  if (filters.unitId) conditions.push(eq(dreRecords.unitId, filters.unitId));
+  if (filters.startPeriod) conditions.push(gte(dreRecords.period, filters.startPeriod));
+  if (filters.endPeriod) conditions.push(lte(dreRecords.period, filters.endPeriod));
+  
+  let query = db.select().from(dreRecords);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(desc(dreRecords.period));
+}
+
+// ==================== AUDIT LOG FUNCTIONS ====================
+export async function createAuditLog(data: Partial<InsertAuditLog>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(auditLogs).values(data as InsertAuditLog);
+}
+
+export async function listAuditLogs(filters: {
+  entityType?: string;
+  entityId?: number;
+  action?: string;
+  userId?: number;
+  startDate?: Date;
+  endDate?: Date;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters.entityType) conditions.push(eq(auditLogs.entityType, filters.entityType));
+  if (filters.entityId) conditions.push(eq(auditLogs.entityId, filters.entityId));
+  if (filters.action) conditions.push(eq(auditLogs.action, filters.action as any));
+  if (filters.userId) conditions.push(eq(auditLogs.userId, filters.userId));
+  if (filters.startDate) conditions.push(gte(auditLogs.createdAt, filters.startDate));
+  if (filters.endDate) conditions.push(lte(auditLogs.createdAt, filters.endDate));
+  
+  let query = db.select().from(auditLogs);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(desc(auditLogs.createdAt)).limit(filters.limit || 100);
+}
+
+// ==================== PRICING FUNCTIONS ====================
+export async function createPricingRule(data: Partial<InsertPricingRule>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(pricingRules).values(data as InsertPricingRule);
+}
+
+export async function updatePricingRule(id: number, data: Partial<InsertPricingRule>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(pricingRules).set(data).where(eq(pricingRules.id, id));
+}
+
+export async function listPricingRules(filters?: { productId?: number; categoryId?: number; unitId?: number; activeOnly?: boolean }) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters?.productId) conditions.push(eq(pricingRules.productId, filters.productId));
+  if (filters?.categoryId) conditions.push(eq(pricingRules.categoryId, filters.categoryId));
+  if (filters?.unitId) conditions.push(eq(pricingRules.unitId, filters.unitId));
+  if (filters?.activeOnly) conditions.push(eq(pricingRules.isActive, true));
+  
+  let query = db.select().from(pricingRules);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(desc(pricingRules.createdAt));
+}
+
+export function calculateSuggestedPrice(
+  baseCost: number,
+  taxRate: number,
+  freightRate: number,
+  commissionRate: number,
+  marketplaceFee: number,
+  acquirerFee: number,
+  targetMargin: number
+): { suggestedPrice: number; breakdown: any } {
+  // Markup = 1 / (1 - (margem + taxas))
+  const totalFees = (taxRate + freightRate + commissionRate + marketplaceFee + acquirerFee) / 100;
+  const marginDecimal = targetMargin / 100;
+  const markup = 1 / (1 - totalFees - marginDecimal);
+  const suggestedPrice = baseCost * markup;
+  
+  // Breakdown
+  const taxAmount = suggestedPrice * (taxRate / 100);
+  const freightAmount = suggestedPrice * (freightRate / 100);
+  const commissionAmount = suggestedPrice * (commissionRate / 100);
+  const marketplaceAmount = suggestedPrice * (marketplaceFee / 100);
+  const acquirerAmount = suggestedPrice * (acquirerFee / 100);
+  const marginAmount = suggestedPrice * marginDecimal;
+  
+  return {
+    suggestedPrice: Math.round(suggestedPrice * 100) / 100,
+    breakdown: {
+      baseCost,
+      taxAmount: Math.round(taxAmount * 100) / 100,
+      freightAmount: Math.round(freightAmount * 100) / 100,
+      commissionAmount: Math.round(commissionAmount * 100) / 100,
+      marketplaceAmount: Math.round(marketplaceAmount * 100) / 100,
+      acquirerAmount: Math.round(acquirerAmount * 100) / 100,
+      marginAmount: Math.round(marginAmount * 100) / 100,
+      totalFees: Math.round((taxAmount + freightAmount + commissionAmount + marketplaceAmount + acquirerAmount) * 100) / 100
+    }
+  };
+}
+
+export function simulateMargin(
+  salePrice: number,
+  baseCost: number,
+  taxRate: number,
+  freightRate: number,
+  commissionRate: number,
+  marketplaceFee: number,
+  acquirerFee: number
+): { margin: number; marginPercent: number; breakdown: any } {
+  const taxAmount = salePrice * (taxRate / 100);
+  const freightAmount = salePrice * (freightRate / 100);
+  const commissionAmount = salePrice * (commissionRate / 100);
+  const marketplaceAmount = salePrice * (marketplaceFee / 100);
+  const acquirerAmount = salePrice * (acquirerFee / 100);
+  const totalFees = taxAmount + freightAmount + commissionAmount + marketplaceAmount + acquirerAmount;
+  const margin = salePrice - baseCost - totalFees;
+  const marginPercent = salePrice > 0 ? (margin / salePrice) * 100 : 0;
+  
+  return {
+    margin: Math.round(margin * 100) / 100,
+    marginPercent: Math.round(marginPercent * 100) / 100,
+    breakdown: {
+      salePrice,
+      baseCost,
+      taxAmount: Math.round(taxAmount * 100) / 100,
+      freightAmount: Math.round(freightAmount * 100) / 100,
+      commissionAmount: Math.round(commissionAmount * 100) / 100,
+      marketplaceAmount: Math.round(marketplaceAmount * 100) / 100,
+      acquirerAmount: Math.round(acquirerAmount * 100) / 100,
+      totalFees: Math.round(totalFees * 100) / 100
+    }
+  };
+}
+
+// ==================== PROMOTION FUNCTIONS ====================
+export async function createPromotion(data: Partial<InsertPromotion>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(promotions).values(data as InsertPromotion);
+}
+
+export async function updatePromotion(id: number, data: Partial<InsertPromotion>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(promotions).set(data).where(eq(promotions.id, id));
+}
+
+export async function listPromotions(filters?: { activeOnly?: boolean; productId?: number; categoryId?: number; unitId?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters?.activeOnly) {
+    conditions.push(eq(promotions.isActive, true));
+    conditions.push(lte(promotions.startDate, new Date()));
+    conditions.push(gte(promotions.endDate, new Date()));
+  }
+  if (filters?.productId) conditions.push(eq(promotions.productId, filters.productId));
+  if (filters?.categoryId) conditions.push(eq(promotions.categoryId, filters.categoryId));
+  if (filters?.unitId) conditions.push(eq(promotions.unitId, filters.unitId));
+  
+  let query = db.select().from(promotions);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(desc(promotions.createdAt));
+}
+
+export async function updatePromotionROI(id: number, saleAmount: number, discountAmount: number, cmvAmount: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const promo = await db.select().from(promotions).where(eq(promotions.id, id)).limit(1);
+  if (promo.length === 0) return;
+  
+  const current = promo[0];
+  const newTotalSales = parseFloat(current.totalSales) + saleAmount;
+  const newTotalDiscount = parseFloat(current.totalDiscount) + discountAmount;
+  const newTotalCMV = parseFloat(current.totalCMV) + cmvAmount;
+  const newNetProfit = newTotalSales - newTotalCMV - newTotalDiscount;
+  const newROI = newTotalDiscount > 0 ? (newNetProfit / newTotalDiscount) * 100 : 0;
+  
+  await db.update(promotions).set({
+    totalSales: newTotalSales.toFixed(2),
+    totalDiscount: newTotalDiscount.toFixed(2),
+    totalCMV: newTotalCMV.toFixed(2),
+    netProfit: newNetProfit.toFixed(2),
+    roi: newROI.toFixed(2),
+    usageCount: current.usageCount + 1
+  }).where(eq(promotions.id, id));
+}
+
+// ==================== STOCK ANALYSIS FUNCTIONS ====================
+export async function calculateStockAnalysis(period: string, unitId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const [year, month] = period.split('-').map(Number);
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59);
+  
+  // Buscar todos os produtos
+  const allProducts = await db.select().from(products).where(eq(products.isActive, true));
+  const analysisResults: any[] = [];
+  
+  for (const product of allProducts) {
+    // Calcular vendas e lucro do período
+    const salesItems = await db.select({
+      quantity: sql<number>`COALESCE(SUM(${salesOrderItems.quantity}), 0)`,
+      revenue: sql<string>`COALESCE(SUM(${salesOrderItems.totalPrice}), 0)`
+    }).from(salesOrderItems)
+      .innerJoin(salesOrders, eq(salesOrderItems.salesOrderId, salesOrders.id))
+      .where(and(
+        eq(salesOrderItems.productId, product.id),
+        gte(salesOrders.orderDate, startDate),
+        lte(salesOrders.orderDate, endDate),
+        inArray(salesOrders.status, ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"])
+      ));
+    
+    const quantitySold = salesItems[0]?.quantity || 0;
+    const revenue = parseFloat(salesItems[0]?.revenue || "0");
+    const costPrice = parseFloat(product.costPrice);
+    const cmv = quantitySold * costPrice;
+    const profit = revenue - cmv;
+    
+    // Estoque médio e valor
+    const averageStock = product.currentStock;
+    const stockValue = averageStock * costPrice;
+    
+    // Cobertura de estoque (dias)
+    const dailySales = quantitySold / 30;
+    const coverageDays = dailySales > 0 ? Math.round(averageStock / dailySales) : 999;
+    
+    // Giro de estoque
+    const turnoverRate = averageStock > 0 ? quantitySold / averageStock : 0;
+    
+    // Capital parado (estoque sem movimento por mais de 90 dias)
+    const idleCapital = coverageDays > 90 ? stockValue : 0;
+    const idleDays = coverageDays > 90 ? coverageDays - 90 : 0;
+    
+    analysisResults.push({
+      period,
+      unitId,
+      productId: product.id,
+      categoryId: product.categoryId,
+      revenue,
+      profit,
+      quantitySold,
+      averageStock: averageStock.toFixed(2),
+      stockValue: stockValue.toFixed(2),
+      coverageDays,
+      turnoverRate: turnoverRate.toFixed(4),
+      stockoutDays: 0,
+      estimatedLostSales: "0.00",
+      idleCapital: idleCapital.toFixed(2),
+      idleDays
+    });
+  }
+  
+  // Calcular classificação ABC
+  const totalRevenue = analysisResults.reduce((sum, a) => sum + a.revenue, 0);
+  const totalProfit = analysisResults.reduce((sum, a) => sum + a.profit, 0);
+  const totalQuantity = analysisResults.reduce((sum, a) => sum + a.quantitySold, 0);
+  
+  // Ordenar por receita para ABC de receita
+  const sortedByRevenue = [...analysisResults].sort((a, b) => b.revenue - a.revenue);
+  let cumulativeRevenue = 0;
+  for (const item of sortedByRevenue) {
+    cumulativeRevenue += item.revenue;
+    const percent = totalRevenue > 0 ? (cumulativeRevenue / totalRevenue) * 100 : 0;
+    item.abcClassRevenue = percent <= 80 ? "A" : percent <= 95 ? "B" : "C";
+  }
+  
+  // Ordenar por lucro para ABC de lucro
+  const sortedByProfit = [...analysisResults].sort((a, b) => b.profit - a.profit);
+  let cumulativeProfit = 0;
+  for (const item of sortedByProfit) {
+    cumulativeProfit += item.profit;
+    const percent = totalProfit > 0 ? (cumulativeProfit / totalProfit) * 100 : 0;
+    item.abcClassProfit = percent <= 80 ? "A" : percent <= 95 ? "B" : "C";
+  }
+  
+  // Ordenar por quantidade para ABC de quantidade
+  const sortedByQuantity = [...analysisResults].sort((a, b) => b.quantitySold - a.quantitySold);
+  let cumulativeQuantity = 0;
+  for (const item of sortedByQuantity) {
+    cumulativeQuantity += item.quantitySold;
+    const percent = totalQuantity > 0 ? (cumulativeQuantity / totalQuantity) * 100 : 0;
+    item.abcClassQuantity = percent <= 80 ? "A" : percent <= 95 ? "B" : "C";
+  }
+  
+  // Salvar análises
+  for (const analysis of analysisResults) {
+    const existing = await db.select().from(stockAnalysis)
+      .where(and(
+        eq(stockAnalysis.period, period),
+        eq(stockAnalysis.productId, analysis.productId),
+        unitId ? eq(stockAnalysis.unitId, unitId) : sql`${stockAnalysis.unitId} IS NULL`
+      )).limit(1);
+    
+    if (existing.length > 0) {
+      await db.update(stockAnalysis).set(analysis).where(eq(stockAnalysis.id, existing[0].id));
+    } else {
+      await db.insert(stockAnalysis).values(analysis);
+    }
+  }
+  
+  return analysisResults;
+}
+
+export async function getStockAnalysisReport(filters: { period?: string; unitId?: number; abcClass?: string; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters.period) conditions.push(eq(stockAnalysis.period, filters.period));
+  if (filters.unitId) conditions.push(eq(stockAnalysis.unitId, filters.unitId));
+  if (filters.abcClass) conditions.push(eq(stockAnalysis.abcClassProfit, filters.abcClass as any));
+  
+  let query = db.select().from(stockAnalysis);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(desc(stockAnalysis.profit)).limit(filters.limit || 100);
+}
+
+// ==================== UNIT PERFORMANCE FUNCTIONS ====================
+export async function calculateUnitPerformance(period: string) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const units = await db.select().from(storeUnits).where(eq(storeUnits.isActive, true));
+  const performances: any[] = [];
+  
+  for (const unit of units) {
+    // Calcular DRE da unidade
+    const dre = await calculateDRE(period, unit.id);
+    if (!dre) continue;
+    
+    // Calcular estoque da unidade
+    const stockResult = await db.select().from(unitStock).where(eq(unitStock.unitId, unit.id));
+    let stockValue = 0;
+    for (const s of stockResult) {
+      const cost = await getProductCost(s.productId, s.variantId || undefined, s.unitId);
+      stockValue += s.quantity * parseFloat(cost?.averageCost || "0");
+    }
+    
+    // Calcular giro de estoque
+    const cmv = parseFloat(dre.cmv);
+    const stockTurnoverRate = stockValue > 0 ? cmv / stockValue : 0;
+    
+    // Contar pedidos
+    const [year, month] = period.split('-').map(Number);
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+    
+    // TODO: Adicionar unitId aos pedidos de venda para filtrar por unidade
+    const orderCount = 0; // Placeholder
+    const averageTicket = orderCount > 0 ? parseFloat(dre.netRevenue) / orderCount : 0;
+    
+    performances.push({
+      period,
+      unitId: unit.id,
+      grossRevenue: dre.grossRevenue,
+      netRevenue: dre.netRevenue,
+      orderCount,
+      averageTicket: averageTicket.toFixed(2),
+      cmv: dre.cmv,
+      grossMargin: dre.grossProfit,
+      grossMarginPercent: dre.grossMarginPercent,
+      totalExpenses: dre.totalOperatingExpenses,
+      operatingProfit: dre.operatingProfit,
+      netProfit: dre.netProfit,
+      netMarginPercent: dre.netMarginPercent,
+      stockValue: stockValue.toFixed(2),
+      stockTurnover: stockTurnoverRate.toFixed(4)
+    });
+  }
+  
+  // Calcular rankings
+  const sortedByRevenue = [...performances].sort((a, b) => parseFloat(b.netRevenue) - parseFloat(a.netRevenue));
+  const sortedByProfit = [...performances].sort((a, b) => parseFloat(b.netProfit) - parseFloat(a.netProfit));
+  const sortedByMargin = [...performances].sort((a, b) => parseFloat(b.netMarginPercent) - parseFloat(a.netMarginPercent));
+  
+  for (let i = 0; i < performances.length; i++) {
+    const perf = performances[i];
+    perf.revenueRank = sortedByRevenue.findIndex(p => p.unitId === perf.unitId) + 1;
+    perf.profitRank = sortedByProfit.findIndex(p => p.unitId === perf.unitId) + 1;
+    perf.marginRank = sortedByMargin.findIndex(p => p.unitId === perf.unitId) + 1;
+    
+    // Salvar
+    const existing = await db.select().from(unitPerformance)
+      .where(and(
+        eq(unitPerformance.period, period),
+        eq(unitPerformance.unitId, perf.unitId)
+      )).limit(1);
+    
+    if (existing.length > 0) {
+      await db.update(unitPerformance).set(perf).where(eq(unitPerformance.id, existing[0].id));
+    } else {
+      await db.insert(unitPerformance).values(perf);
+    }
+  }
+  
+  return performances;
+}
+
+export async function getUnitPerformanceReport(filters: { period?: string; unitId?: number; startPeriod?: string; endPeriod?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters.period) conditions.push(eq(unitPerformance.period, filters.period));
+  if (filters.unitId) conditions.push(eq(unitPerformance.unitId, filters.unitId));
+  if (filters.startPeriod) conditions.push(gte(unitPerformance.period, filters.startPeriod));
+  if (filters.endPeriod) conditions.push(lte(unitPerformance.period, filters.endPeriod));
+  
+  let query = db.select().from(unitPerformance);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(desc(unitPerformance.period), asc(unitPerformance.revenueRank));
+}
+
+// ==================== BANK RECONCILIATION FUNCTIONS ====================
+export async function createBankReconciliation(data: Partial<InsertBankReconciliation>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(bankReconciliation).values(data as InsertBankReconciliation);
+}
+
+export async function updateBankReconciliation(id: number, data: Partial<InsertBankReconciliation>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(bankReconciliation).set(data).where(eq(bankReconciliation.id, id));
+}
+
+export async function listBankReconciliations(filters?: { bankAccount?: string; status?: string; period?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions: any[] = [];
+  if (filters?.bankAccount) conditions.push(eq(bankReconciliation.bankAccount, filters.bankAccount));
+  if (filters?.status) conditions.push(eq(bankReconciliation.status, filters.status as any));
+  if (filters?.period) conditions.push(eq(bankReconciliation.period, filters.period));
+  
+  let query = db.select().from(bankReconciliation);
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  return query.orderBy(desc(bankReconciliation.period));
+}
+
+export async function addReconciliationItem(data: Partial<InsertReconciliationItem>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(reconciliationItems).values(data as InsertReconciliationItem);
+}
+
+export async function listReconciliationItems(reconciliationId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(reconciliationItems)
+    .where(eq(reconciliationItems.reconciliationId, reconciliationId))
+    .orderBy(desc(reconciliationItems.transactionDate));
+}
+
+// ==================== SUPPLIER HISTORY FUNCTIONS ====================
+export async function createSupplierHistory(data: Partial<InsertSupplierHistory>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(supplierHistory).values(data as InsertSupplierHistory);
+}
+
+export async function getSupplierHistoryReport(supplierId: number) {
+  const db = await getDb();
+  if (!db) return { history: [], stats: null };
+  
+  const history = await db.select().from(supplierHistory)
+    .where(eq(supplierHistory.supplierId, supplierId))
+    .orderBy(desc(supplierHistory.purchaseDate));
+  
+  // Calcular estatísticas
+  const totalOrders = history.length;
+  const totalValue = history.reduce((sum, h) => sum + parseFloat(h.totalValue), 0);
+  const avgDeliveryDays = history.filter(h => h.deliveryDays).reduce((sum, h) => sum + (h.deliveryDays || 0), 0) / (history.filter(h => h.deliveryDays).length || 1);
+  const avgQualityRating = history.filter(h => h.qualityRating).reduce((sum, h) => sum + (h.qualityRating || 0), 0) / (history.filter(h => h.qualityRating).length || 1);
+  const avgDeliveryRating = history.filter(h => h.deliveryRating).reduce((sum, h) => sum + (h.deliveryRating || 0), 0) / (history.filter(h => h.deliveryRating).length || 1);
+  
+  return {
+    history,
+    stats: {
+      totalOrders,
+      totalValue: totalValue.toFixed(2),
+      avgDeliveryDays: Math.round(avgDeliveryDays),
+      avgQualityRating: avgQualityRating.toFixed(1),
+      avgDeliveryRating: avgDeliveryRating.toFixed(1)
+    }
+  };
+}
+
+// ==================== UTILITY FUNCTIONS ====================
+function getPreviousPeriod(period: string): string {
+  const [year, month] = period.split('-').map(Number);
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  return `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+}
+
+export function getCurrentPeriod(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }

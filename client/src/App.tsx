@@ -18,6 +18,14 @@ import Units from "./pages/Units";
 import Transfers from "./pages/Transfers";
 import Returns from "./pages/Returns";
 import UnitStock from "./pages/UnitStock";
+import CashFlow from "./pages/CashFlow";
+import Payables from "./pages/Payables";
+import Receivables from "./pages/Receivables";
+import Pricing from "./pages/Pricing";
+import Reconciliation from "./pages/Reconciliation";
+import DRE from "./pages/DRE";
+import FinancialReports from "./pages/FinancialReports";
+import AuditLogs from "./pages/AuditLogs";
 
 function Router() {
   return (
@@ -36,6 +44,14 @@ function Router() {
       <Route path={"/transfers"} component={Transfers} />
       <Route path={"/returns"} component={Returns} />
       <Route path={"/unit-stock"} component={UnitStock} />
+      <Route path={"/cash-flow"} component={CashFlow} />
+      <Route path={"/payables"} component={Payables} />
+      <Route path={"/receivables"} component={Receivables} />
+      <Route path={"/pricing"} component={Pricing} />
+      <Route path={"/reconciliation"} component={Reconciliation} />
+      <Route path={"/dre"} component={DRE} />
+      <Route path={"/financial-reports"} component={FinancialReports} />
+      <Route path={"/audit-logs"} component={AuditLogs} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

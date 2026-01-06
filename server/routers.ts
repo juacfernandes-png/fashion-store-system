@@ -1201,6 +1201,741 @@ export const appRouter = router({
       }),
   }),
 
+  // ==================== COST CENTERS ====================
+  costCenters: router({
+    list: protectedProcedure.query(async () => {
+      return db.listCostCenters();
+    }),
+    
+    create: adminProcedure
+      .input(z.object({
+        code: z.string().min(1),
+        name: z.string().min(1),
+        type: z.enum(["OPERATION", "MARKETING", "ADMINISTRATIVE", "FINANCIAL", "OTHER"]),
+        description: z.string().optional(),
+        budget: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.createCostCenter(input);
+      }),
+    
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        data: z.object({
+          name: z.string().optional(),
+          type: z.enum(["OPERATION", "MARKETING", "ADMINISTRATIVE", "FINANCIAL", "OTHER"]).optional(),
+          description: z.string().optional(),
+          budget: z.string().optional(),
+          isActive: z.boolean().optional(),
+        }),
+      }))
+      .mutation(async ({ input }) => {
+        return db.updateCostCenter(input.id, input.data);
+      }),
+  }),
+
+  // ==================== ACCOUNTS PAYABLE ADVANCED ====================
+  payables: router({
+    list: protectedProcedure
+      .input(z.object({
+        status: z.string().optional(),
+        approvalStatus: z.string().optional(),
+        unitId: z.number().optional(),
+        costCenterId: z.number().optional(),
+        supplierId: z.number().optional(),
+        category: z.string().optional(),
+        startDate: z.date().optional(),
+        endDate: z.date().optional(),
+        isRecurring: z.boolean().optional(),
+        limit: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const payables = await db.listAccountsPayableAdvanced(input ?? {});
+        const enriched = await Promise.all(payables.map(async (p) => {
+          const supplier = p.supplierId ? await db.getSupplierById(p.supplierId) : null;
+          const unit = p.unitId ? await db.getStoreUnitById(p.unitId) : null;
+          const costCenter = p.costCenterId ? await db.getCostCenterById(p.costCenterId) : null;
+          return { ...p, supplier, unit, costCenter };
+        }));
+        return enriched;
+      }),
+    
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getAccountPayableAdvancedById(input.id);
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        documentNumber: z.string().optional(),
+        description: z.string().min(1),
+        supplierId: z.number().optional(),
+        purchaseOrderId: z.number().optional(),
+        unitId: z.number().optional(),
+        costCenterId: z.number().optional(),
+        category: z.enum(["SUPPLIER", "RENT", "UTILITIES", "SALARY", "TAX", "MARKETING", "FREIGHT", "SYSTEM", "INSURANCE", "MAINTENANCE", "OTHER"]),
+        amount: z.string(),
+        dueDate: z.date(),
+        paymentMethod: z.enum(["CASH", "CREDIT", "DEBIT", "PIX", "TRANSFER", "CHECK", "BOLETO"]).optional(),
+        bankAccount: z.string().optional(),
+        isRecurring: z.boolean().default(false),
+        recurringFrequency: z.enum(["WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]).optional(),
+        recurringEndDate: z.date().optional(),
+        totalInstallments: z.number().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Se for parcelado, criar múltiplas contas
+        if (input.totalInstallments && input.totalInstallments > 1) {
+          const installmentAmount = parseFloat(input.amount) / input.totalInstallments;
+          for (let i = 0; i < input.totalInstallments; i++) {
+            const dueDate = new Date(input.dueDate);
+            dueDate.setMonth(dueDate.getMonth() + i);
+            await db.createAccountPayableAdvanced({
+              ...input,
+              amount: installmentAmount.toFixed(2),
+              dueDate,
+              installmentNumber: i + 1,
+              totalInstallments: input.totalInstallments,
+              createdBy: ctx.user.id,
+            });
+          }
+        } else {
+          await db.createAccountPayableAdvanced({
+            ...input,
+            createdBy: ctx.user.id,
+          });
+        }
+        return { success: true };
+      }),
+    
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        data: z.object({
+          description: z.string().optional(),
+          category: z.enum(["SUPPLIER", "RENT", "UTILITIES", "SALARY", "TAX", "MARKETING", "FREIGHT", "SYSTEM", "INSURANCE", "MAINTENANCE", "OTHER"]).optional(),
+          amount: z.string().optional(),
+          dueDate: z.date().optional(),
+          notes: z.string().optional(),
+        }),
+      }))
+      .mutation(async ({ input }) => {
+        return db.updateAccountPayableAdvanced(input.id, input.data);
+      }),
+    
+    approve: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.approveAccountPayable(input.id, ctx.user.id);
+        await db.createAuditLog({
+          entityType: "ACCOUNT_PAYABLE",
+          entityId: input.id,
+          action: "APPROVE",
+          userId: ctx.user.id,
+          userName: ctx.user.name || undefined,
+        });
+        return { success: true };
+      }),
+    
+    reject: adminProcedure
+      .input(z.object({ id: z.number(), reason: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.rejectAccountPayable(input.id, ctx.user.id);
+        await db.createAuditLog({
+          entityType: "ACCOUNT_PAYABLE",
+          entityId: input.id,
+          action: "REJECT",
+          reason: input.reason,
+          userId: ctx.user.id,
+          userName: ctx.user.name || undefined,
+        });
+        return { success: true };
+      }),
+    
+    pay: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        amount: z.number(),
+        paymentMethod: z.string(),
+        bankAccount: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.payAccountPayableAdvanced(input.id, input.amount, input.paymentMethod, input.bankAccount);
+        await db.createAuditLog({
+          entityType: "ACCOUNT_PAYABLE",
+          entityId: input.id,
+          action: "UPDATE",
+          fieldChanged: "payment",
+          newValue: input.amount.toString(),
+          userId: ctx.user.id,
+          userName: ctx.user.name || undefined,
+        });
+        return { success: true };
+      }),
+  }),
+
+  // ==================== ACCOUNTS RECEIVABLE ADVANCED ====================
+  receivables: router({
+    list: protectedProcedure
+      .input(z.object({
+        status: z.string().optional(),
+        unitId: z.number().optional(),
+        customerId: z.number().optional(),
+        paymentMethod: z.string().optional(),
+        startDate: z.date().optional(),
+        endDate: z.date().optional(),
+        isReconciled: z.boolean().optional(),
+        limit: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const receivables = await db.listAccountsReceivableAdvanced(input ?? {});
+        const enriched = await Promise.all(receivables.map(async (r) => {
+          const customer = r.customerId ? await db.getCustomerById(r.customerId) : null;
+          const unit = r.unitId ? await db.getStoreUnitById(r.unitId) : null;
+          return { ...r, customer, unit };
+        }));
+        return enriched;
+      }),
+    
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getAccountReceivableAdvancedById(input.id);
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        documentNumber: z.string().optional(),
+        description: z.string().min(1),
+        customerId: z.number().optional(),
+        salesOrderId: z.number().optional(),
+        unitId: z.number().optional(),
+        amount: z.string(),
+        dueDate: z.date(),
+        paymentMethod: z.enum(["CASH", "CREDIT", "DEBIT", "PIX", "TRANSFER", "CHECK", "BOLETO"]).optional(),
+        cardBrand: z.string().optional(),
+        cardInstallments: z.number().optional(),
+        expectedReceiptDate: z.date().optional(),
+        acquirerFee: z.string().optional(),
+        bankAccount: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Calcular valor líquido se houver taxa
+        let netAmount = input.amount;
+        if (input.acquirerFee) {
+          netAmount = (parseFloat(input.amount) - parseFloat(input.acquirerFee)).toFixed(2);
+        }
+        await db.createAccountReceivableAdvanced({
+          ...input,
+          netAmount,
+          createdBy: ctx.user.id,
+        });
+        return { success: true };
+      }),
+    
+    receive: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        amount: z.number(),
+        paymentMethod: z.string(),
+        bankAccount: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.receiveAccountReceivableAdvanced(input.id, input.amount, input.paymentMethod, input.bankAccount);
+        await db.createAuditLog({
+          entityType: "ACCOUNT_RECEIVABLE",
+          entityId: input.id,
+          action: "UPDATE",
+          fieldChanged: "receipt",
+          newValue: input.amount.toString(),
+          userId: ctx.user.id,
+          userName: ctx.user.name || undefined,
+        });
+        return { success: true };
+      }),
+    
+    reconcile: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.reconcileAccountReceivable(input.id, ctx.user.id);
+        return { success: true };
+      }),
+    
+    markChargeback: adminProcedure
+      .input(z.object({ id: z.number(), reason: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateAccountReceivableAdvanced(input.id, {
+          status: "CHARGEBACK",
+          chargebackReason: input.reason,
+        });
+        await db.createAuditLog({
+          entityType: "ACCOUNT_RECEIVABLE",
+          entityId: input.id,
+          action: "UPDATE",
+          fieldChanged: "chargeback",
+          newValue: input.reason,
+          userId: ctx.user.id,
+          userName: ctx.user.name || undefined,
+        });
+        return { success: true };
+      }),
+  }),
+
+  // ==================== CASH FLOW ====================
+  cashFlow: router({
+    list: protectedProcedure
+      .input(z.object({
+        type: z.string().optional(),
+        category: z.string().optional(),
+        unitId: z.number().optional(),
+        costCenterId: z.number().optional(),
+        startDate: z.date().optional(),
+        endDate: z.date().optional(),
+        isProjected: z.boolean().optional(),
+        isReconciled: z.boolean().optional(),
+        limit: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.listCashFlow(input ?? {});
+      }),
+    
+    summary: protectedProcedure
+      .input(z.object({
+        unitId: z.number().optional(),
+        costCenterId: z.number().optional(),
+        startDate: z.date().optional(),
+        endDate: z.date().optional(),
+        isProjected: z.boolean().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getCashFlowSummary(input ?? {});
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        type: z.enum(["INCOME", "EXPENSE"]),
+        category: z.enum(["SALES", "RECEIVABLES", "OTHER_INCOME", "SUPPLIERS", "FREIGHT", "SALARY", "RENT", "UTILITIES", "MARKETING", "TAX", "FEES", "OTHER_EXPENSE"]),
+        subcategory: z.string().optional(),
+        description: z.string().min(1),
+        amount: z.string(),
+        transactionDate: z.date(),
+        unitId: z.number().optional(),
+        costCenterId: z.number().optional(),
+        paymentMethod: z.enum(["CASH", "CREDIT", "DEBIT", "PIX", "TRANSFER", "CHECK", "BOLETO"]).optional(),
+        bankAccount: z.string().optional(),
+        isProjected: z.boolean().default(false),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.createCashFlowEntry({
+          ...input,
+          userId: ctx.user.id,
+        });
+        return { success: true };
+      }),
+    
+    reconcile: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.reconcileCashFlowEntry(input.id);
+        return { success: true };
+      }),
+  }),
+
+  // ==================== CMV ====================
+  cmv: router({
+    calculate: adminProcedure
+      .input(z.object({
+        period: z.string(),
+        unitId: z.number().optional(),
+        productId: z.number().optional(),
+        categoryId: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.calculateCMV(input.period, input.unitId, input.productId, input.categoryId);
+      }),
+    
+    report: protectedProcedure
+      .input(z.object({
+        period: z.string().optional(),
+        unitId: z.number().optional(),
+        productId: z.number().optional(),
+        categoryId: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getCMVReport(input ?? {});
+      }),
+  }),
+
+  // ==================== DRE ====================
+  dre: router({
+    calculate: adminProcedure
+      .input(z.object({
+        period: z.string(),
+        unitId: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.calculateDRE(input.period, input.unitId);
+      }),
+    
+    report: protectedProcedure
+      .input(z.object({
+        period: z.string().optional(),
+        unitId: z.number().optional(),
+        startPeriod: z.string().optional(),
+        endPeriod: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.getDREReport(input ?? {});
+      }),
+  }),
+
+  // ==================== PRICING ====================
+  pricing: router({
+    list: protectedProcedure
+      .input(z.object({
+        productId: z.number().optional(),
+        categoryId: z.number().optional(),
+        unitId: z.number().optional(),
+        activeOnly: z.boolean().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.listPricingRules(input);
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        productId: z.number().optional(),
+        categoryId: z.number().optional(),
+        unitId: z.number().optional(),
+        baseCost: z.string().optional(),
+        taxRate: z.string().default("0"),
+        freightRate: z.string().default("0"),
+        commissionRate: z.string().default("0"),
+        marketplaceFee: z.string().default("0"),
+        acquirerFee: z.string().default("0"),
+        targetMargin: z.string(),
+        minMargin: z.string().optional(),
+        maxMargin: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        // Calcular preço sugerido
+        if (input.baseCost) {
+          const result = db.calculateSuggestedPrice(
+            parseFloat(input.baseCost),
+            parseFloat(input.taxRate),
+            parseFloat(input.freightRate),
+            parseFloat(input.commissionRate),
+            parseFloat(input.marketplaceFee),
+            parseFloat(input.acquirerFee),
+            parseFloat(input.targetMargin)
+          );
+          await db.createPricingRule({
+            ...input,
+            suggestedPrice: result.suggestedPrice.toFixed(2),
+          });
+        } else {
+          await db.createPricingRule(input);
+        }
+        return { success: true };
+      }),
+    
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        data: z.object({
+          name: z.string().optional(),
+          description: z.string().optional(),
+          baseCost: z.string().optional(),
+          taxRate: z.string().optional(),
+          freightRate: z.string().optional(),
+          commissionRate: z.string().optional(),
+          marketplaceFee: z.string().optional(),
+          acquirerFee: z.string().optional(),
+          targetMargin: z.string().optional(),
+          isActive: z.boolean().optional(),
+        }),
+      }))
+      .mutation(async ({ input }) => {
+        return db.updatePricingRule(input.id, input.data);
+      }),
+    
+    calculatePrice: protectedProcedure
+      .input(z.object({
+        baseCost: z.number(),
+        taxRate: z.number().default(0),
+        freightRate: z.number().default(0),
+        commissionRate: z.number().default(0),
+        marketplaceFee: z.number().default(0),
+        acquirerFee: z.number().default(0),
+        targetMargin: z.number(),
+      }))
+      .query(({ input }) => {
+        return db.calculateSuggestedPrice(
+          input.baseCost,
+          input.taxRate,
+          input.freightRate,
+          input.commissionRate,
+          input.marketplaceFee,
+          input.acquirerFee,
+          input.targetMargin
+        );
+      }),
+    
+    simulateMargin: protectedProcedure
+      .input(z.object({
+        salePrice: z.number(),
+        baseCost: z.number(),
+        taxRate: z.number().default(0),
+        freightRate: z.number().default(0),
+        commissionRate: z.number().default(0),
+        marketplaceFee: z.number().default(0),
+        acquirerFee: z.number().default(0),
+      }))
+      .query(({ input }) => {
+        return db.simulateMargin(
+          input.salePrice,
+          input.baseCost,
+          input.taxRate,
+          input.freightRate,
+          input.commissionRate,
+          input.marketplaceFee,
+          input.acquirerFee
+        );
+      }),
+  }),
+
+  // ==================== PROMOTIONS ====================
+  promotions: router({
+    list: protectedProcedure
+      .input(z.object({
+        activeOnly: z.boolean().optional(),
+        productId: z.number().optional(),
+        categoryId: z.number().optional(),
+        unitId: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.listPromotions(input);
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        code: z.string().min(1),
+        name: z.string().min(1),
+        description: z.string().optional(),
+        type: z.enum(["PERCENTAGE", "FIXED", "BOGO", "BUNDLE"]),
+        discountValue: z.string(),
+        minPurchase: z.string().optional(),
+        maxDiscount: z.string().optional(),
+        productId: z.number().optional(),
+        categoryId: z.number().optional(),
+        unitId: z.number().optional(),
+        startDate: z.date(),
+        endDate: z.date(),
+        usageLimit: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await db.createPromotion(input);
+        return { success: true };
+      }),
+    
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        data: z.object({
+          name: z.string().optional(),
+          description: z.string().optional(),
+          discountValue: z.string().optional(),
+          startDate: z.date().optional(),
+          endDate: z.date().optional(),
+          isActive: z.boolean().optional(),
+        }),
+      }))
+      .mutation(async ({ input }) => {
+        return db.updatePromotion(input.id, input.data);
+      }),
+  }),
+
+  // ==================== STOCK ANALYSIS ====================
+  stockAnalysis: router({
+    calculate: adminProcedure
+      .input(z.object({
+        period: z.string(),
+        unitId: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return db.calculateStockAnalysis(input.period, input.unitId);
+      }),
+    
+    report: protectedProcedure
+      .input(z.object({
+        period: z.string().optional(),
+        unitId: z.number().optional(),
+        abcClass: z.string().optional(),
+        limit: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const analysis = await db.getStockAnalysisReport(input ?? {});
+        // Enrich with product info
+        const enriched = await Promise.all(analysis.map(async (a) => {
+          const product = await db.getProductById(a.productId);
+          const category = a.categoryId ? await db.getCategoryById(a.categoryId) : null;
+          return { ...a, product, category };
+        }));
+        return enriched;
+      }),
+  }),
+
+  // ==================== UNIT PERFORMANCE ====================
+  unitPerformance: router({
+    calculate: adminProcedure
+      .input(z.object({ period: z.string() }))
+      .mutation(async ({ input }) => {
+        return db.calculateUnitPerformance(input.period);
+      }),
+    
+    report: protectedProcedure
+      .input(z.object({
+        period: z.string().optional(),
+        unitId: z.number().optional(),
+        startPeriod: z.string().optional(),
+        endPeriod: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const performances = await db.getUnitPerformanceReport(input ?? {});
+        // Enrich with unit info
+        const enriched = await Promise.all(performances.map(async (p) => {
+          const unit = await db.getStoreUnitById(p.unitId);
+          return { ...p, unit };
+        }));
+        return enriched;
+      }),
+  }),
+
+  // ==================== BANK RECONCILIATION ====================
+  bankReconciliation: router({
+    list: protectedProcedure
+      .input(z.object({
+        bankAccount: z.string().optional(),
+        status: z.string().optional(),
+        period: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.listBankReconciliations(input);
+      }),
+    
+    create: adminProcedure
+      .input(z.object({
+        bankAccount: z.string(),
+        period: z.string(),
+        openingBalance: z.string(),
+        closingBalance: z.string(),
+        systemBalance: z.string(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const difference = (parseFloat(input.closingBalance) - parseFloat(input.systemBalance)).toFixed(2);
+        await db.createBankReconciliation({
+          ...input,
+          difference,
+          status: parseFloat(difference) === 0 ? "RECONCILED" : "DISCREPANCY",
+        });
+        return { success: true };
+      }),
+    
+    addItem: adminProcedure
+      .input(z.object({
+        reconciliationId: z.number(),
+        transactionDate: z.date(),
+        description: z.string(),
+        bankAmount: z.string(),
+        systemAmount: z.string().optional(),
+        cashFlowId: z.number().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const difference = input.systemAmount 
+          ? (parseFloat(input.bankAmount) - parseFloat(input.systemAmount)).toFixed(2)
+          : input.bankAmount;
+        const status = input.systemAmount && parseFloat(difference) === 0 ? "MATCHED" : "UNMATCHED";
+        await db.addReconciliationItem({
+          ...input,
+          difference,
+          status,
+        });
+        return { success: true };
+      }),
+    
+    getItems: protectedProcedure
+      .input(z.object({ reconciliationId: z.number() }))
+      .query(async ({ input }) => {
+        return db.listReconciliationItems(input.reconciliationId);
+      }),
+    
+    complete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateBankReconciliation(input.id, {
+          status: "RECONCILED",
+          reconciledBy: ctx.user.id,
+          reconciledAt: new Date(),
+        });
+        return { success: true };
+      }),
+  }),
+
+  // ==================== AUDIT LOGS ====================
+  auditLogs: router({
+    list: protectedProcedure
+      .input(z.object({
+        entityType: z.string().optional(),
+        entityId: z.number().optional(),
+        action: z.string().optional(),
+        userId: z.number().optional(),
+        startDate: z.date().optional(),
+        endDate: z.date().optional(),
+        limit: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return db.listAuditLogs(input ?? {});
+      }),
+  }),
+
+  // ==================== SUPPLIER HISTORY ====================
+  supplierHistory: router({
+    getReport: protectedProcedure
+      .input(z.object({ supplierId: z.number() }))
+      .query(async ({ input }) => {
+        return db.getSupplierHistoryReport(input.supplierId);
+      }),
+    
+    addEntry: adminProcedure
+      .input(z.object({
+        supplierId: z.number(),
+        purchaseOrderId: z.number().optional(),
+        productId: z.number().optional(),
+        unitPrice: z.string(),
+        quantity: z.number(),
+        totalValue: z.string(),
+        paymentTerms: z.string().optional(),
+        deliveryDays: z.number().optional(),
+        qualityRating: z.number().min(1).max(5).optional(),
+        deliveryRating: z.number().min(1).max(5).optional(),
+        notes: z.string().optional(),
+        purchaseDate: z.date(),
+      }))
+      .mutation(async ({ input }) => {
+        await db.createSupplierHistory(input);
+        return { success: true };
+      }),
+  }),
+
   // ==================== UTILITIES ====================
   utils: router({
     generateCode: protectedProcedure
@@ -1208,6 +1943,10 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return db.generateCode(input.prefix);
       }),
+    
+    getCurrentPeriod: protectedProcedure.query(() => {
+      return db.getCurrentPeriod();
+    }),
   }),
 });
 
