@@ -133,12 +133,12 @@ export default function AuditLogs() {
               </div>
               <div className="space-y-2">
                 <Label>Entidade</Label>
-                <Select value={filterEntity} onValueChange={setFilterEntity}>
+                <Select value={filterEntity || "all"} onValueChange={(val) => setFilterEntity(val === "all" ? "" : val)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas</SelectItem>
+                    <SelectItem value="all">Todas</SelectItem>
                     {entityTypes.map((type) => (
                       <SelectItem key={type} value={type}>{getEntityLabel(type)}</SelectItem>
                     ))}
@@ -147,12 +147,12 @@ export default function AuditLogs() {
               </div>
               <div className="space-y-2">
                 <Label>Ação</Label>
-                <Select value={filterAction} onValueChange={setFilterAction}>
+                <Select value={filterAction || "all"} onValueChange={(val) => setFilterAction(val === "all" ? "" : val)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas</SelectItem>
+                    <SelectItem value="all">Todas</SelectItem>
                     {actionTypes.map((action) => (
                       <SelectItem key={action} value={action}>
                         {action === "CREATE" ? "Criação" :

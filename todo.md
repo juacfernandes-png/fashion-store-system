@@ -85,3 +85,7 @@
 - [x] Cobertura de estoque (dias)
 - [x] Ruptura e perda de venda estimada
 - [x] ROI de promoções
+
+## Bugs Reportados
+- [x] Corrigir erro no Log de Auditoria (Select.Item com valor vazio)
+- [x] Fazer a sidebar ficar fixa na tela

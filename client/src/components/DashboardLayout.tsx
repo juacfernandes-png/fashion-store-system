@@ -215,10 +215,10 @@ function DashboardLayoutContent({
 
   return (
     <>
-      <div className="relative" ref={sidebarRef}>
+      <div className="relative h-screen sticky top-0" ref={sidebarRef}>
         <Sidebar
           collapsible="icon"
-          className="border-r-0"
+          className="border-r-0 h-full"
           disableTransition={isResizing}
         >
           <SidebarHeader className="h-16 justify-center border-b border-sidebar-border/50">
@@ -240,7 +240,7 @@ function DashboardLayoutContent({
             </div>
           </SidebarHeader>
 
-          <SidebarContent className="gap-0 py-2">
+          <SidebarContent className="gap-0 py-2 overflow-y-auto">
             <SidebarMenu className="px-2 py-1 space-y-1">
               {menuItems.map(item => {
                 const isActive = location === item.path;
